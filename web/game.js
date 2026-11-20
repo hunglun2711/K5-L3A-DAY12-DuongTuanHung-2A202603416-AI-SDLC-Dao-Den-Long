@@ -256,9 +256,12 @@
     }
 
     for (const jp of jumpPads) {
-      const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.15, 0.25, 20), new THREE.MeshStandardMaterial({ color: 0xF2C14E, emissive: 0xFFB347, emissiveIntensity: 0.6 }));
-      pad.position.set(jp.pos[0], jp.pos[1] + 0.12, jp.pos[2]);
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 0.28, 20), new THREE.MeshStandardMaterial({ color: 0xF2C14E, emissive: 0xFFB347, emissiveIntensity: 0.9 }));
+      pad.position.set(jp.pos[0], jp.pos[1] + 0.14, jp.pos[2]);
       worldGroup.add(pad);
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.8, 3.2, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xFFE58A, transparent: true, opacity: 0.25, side: THREE.DoubleSide }));
+      beam.position.set(jp.pos[0], jp.pos[1] + 1.7, jp.pos[2]);
+      worldGroup.add(beam);
     }
 
     sim = {
@@ -445,7 +448,7 @@
     if (sim.windActive) { const wr = (sim.windDir * Math.PI) / 180; vx += 2 * Math.cos(wr); vz += 2 * Math.sin(wr); }
     const nx = p.pos[0] + vx * DT, nz = p.pos[2] + vz * DT;
     let blocked = false;
-    if (sim.night === 3) {
+    if (sim.night === 3 && !p.launched) {
       const nr = Math.hypot(nx, nz);
       if (nr < 2.2 && p.pos[1] >= 5.5) blocked = true; // Bell tower
       if (nr <= 8 && p.pos[1] > 0.5 && p.pos[1] < 5.65) blocked = true; // Tier 2 cliff
@@ -478,7 +481,7 @@
     }
 
     for (const jp of sim.jumpPads) {
-      if (Math.hypot(p.pos[0] - jp.pos[0], p.pos[2] - jp.pos[2]) <= 1.1 && Math.abs(p.pos[1] - jp.pos[1]) <= 1) {
+      if (Math.hypot(p.pos[0] - jp.pos[0], p.pos[2] - jp.pos[2]) <= 1.35 && Math.abs(p.pos[1] - jp.pos[1]) <= 1.2) {
         let ux = jp.dir ? jp.dir[0] : (jp.target[0] - jp.pos[0]), uz = jp.dir ? jp.dir[1] : (jp.target[2] - jp.pos[2]);
         const d = Math.hypot(ux, uz) || 1;
         p.vel = [(ux / d) * jp.vh, jp.vy, (uz / d) * jp.vh]; p.grounded = false; p.launched = true;
