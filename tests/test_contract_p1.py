@@ -10,12 +10,12 @@ from src.sim import GameSim, load_contract
 
 def test_contract_schema():
     c = load_contract()
-    assert c["contract_version"] == "1.1"
+    assert c["contract_version"] == "1.2"
     assert c["tuning"]["lantern_count_night1"] == 5
     assert c["tuning"]["lantern_cost"] == 10
     assert c["tuning"]["carry_capacity"] == 10
-    assert c["tuning"]["night1_duration_s"] == 300
-    assert "dash_speed" in c["tuning"]
+    assert c["tuning"]["night1_duration_s"] == 240
+    assert "fuel_max" in c["tuning"]
 
 
 def test_tick_model_and_camera_yaw_movement():
@@ -41,10 +41,12 @@ def test_move_vector_clamped_to_unit_length():
 
 
 def test_pickup_deposit_and_win():
-    # Updated for Ticket-02: lantern_cost=10, carry_capacity=10
+    # Updated for Ticket-03 (Contract v1.2): lighting 5th lantern no longer ends early;
+    # player wins (dawn_survived) when time_left_s hits 0 with >= ceil(0.6*5)=3 lit lanterns.
     sc = {
         "random_motes": False,
         "random_shades": False,
+        "time_left_s": 2.0,
         "motes": [[0, 0, 1 + i * 0.2] for i in range(10)],
         "shades": [],
         "lanterns": [
@@ -63,12 +65,18 @@ def test_pickup_deposit_and_win():
         all_events.extend(sim.step(patch))
     assert sim.carried == 10
     all_events.extend(sim.step({"move": [0, 0], "interact": True}))
+    assert sim.state == "playing"  # No early win in Phase 3
+    for _ in range(90):
+        if sim.state != "playing":
+            break
+        all_events.extend(sim.step({"interact": False}))
     names = [e["name"] for e in all_events]
     assert "mote_picked" in names
     assert "deposit" in names
     assert "lantern_lit" in names
     assert "game_over" in names
     assert sim.state == "won"
+    assert any(e["name"] == "game_over" and e["data"]["reason"] == "dawn_survived" for e in all_events)
 
 
 def test_pulse_stuns_pushes_and_lit_lantern_safe_radius():

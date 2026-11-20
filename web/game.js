@@ -8,9 +8,11 @@
   const settings = {
     vol: parseFloat(localStorage.getItem('ddl_vol') ?? '0.5'),
     sens: parseFloat(localStorage.getItem('ddl_sens') ?? '0.4'),
+    cb: localStorage.getItem('ddl_cb') === '1',
   };
   document.getElementById('optVol').value = settings.vol;
   document.getElementById('optSens').value = settings.sens;
+  document.getElementById('optCb').checked = settings.cb;
 
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   let audioCtx = null;
@@ -30,7 +32,7 @@
   }
 
   const moteBar = document.getElementById('moteBar');
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 20; i++) {
     const d = document.createElement('div');
     d.className = 'mote-slot';
     moteBar.appendChild(d);
@@ -266,28 +268,30 @@
 
     sim = {
       night, state: 'playing', score: 0, ticks: 0,
-      timeLeft: T[`night${night}_duration_s`] || 300,
-      player: { pos: [0,0,0], vel: [0,0,0], facing: [0,1], grounded: true, carried: 0, flames: T.flames, invuln: 0, dashT: 0, dashDir: [0,1], dashCd: 0, pulseCd: 0, charmT: 0, launched: false },
-      lanterns: lanterns.map((p, i) => ({ id: `L${i+1}`, pos: p, lit: false, deposited: 0 })),
+      timeLeft: T[`night${night}_duration_s`] || 240,
+      player: { pos: [0,0,0], vel: [0,0,0], facing: [0,1], grounded: true, carried: 0, successfulLights: 0, flames: T.flames, invuln: 0, dashT: 0, dashDir: [0,1], dashCd: 0, pulseCd: 0, charmT: 0, launched: false },
+      lanterns: lanterns.map((p, i) => ({ id: `L${i+1}`, pos: p, lit: false, deposited: 0, fuelUnits: 0, everLit: false })),
       motes: [], shades: [], drifters: [], charms,
       motePts, shadePts, jumpPads, shadeSpeed, shadeInt, maxShades,
       windActive: false, windDir: 0, windTimer: 1800,
     };
 
-    // Detailed Great Lanterns
+    // Detailed Great Lanterns + fuel bar
     sim.lanterns.forEach((l) => {
       const g = new THREE.Group(); g.position.set(l.pos[0], l.pos[1], l.pos[2]);
       const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.68, 0.45, 8), woodMat); base.position.y = 0.22; g.add(base);
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 2.7, 10), woodMat); post.position.y = 1.65; post.castShadow = true; g.add(post);
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.86, 1.05, 0.86), new THREE.MeshStandardMaterial({ color: 0x5B5F6E, roughness: 0.5 }));
-      head.position.y = 3.35; head.castShadow = true; g.add(head);
+      head.position.y = 3.35; head.scale.y = 0.8; head.castShadow = true; g.add(head);
       const roof = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.55, 4), woodMat);
       roof.position.y = 4.15; roof.rotation.y = Math.PI / 4; g.add(roof);
+      const fuelBar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.14, 0.14), new THREE.MeshBasicMaterial({ color: 0xF2C14E }));
+      fuelBar.position.y = 4.8; fuelBar.visible = false; g.add(fuelBar);
       const light = new THREE.PointLight(0xFFB347, 0, 22); light.position.y = 3.35; g.add(light);
       const ring = new THREE.Mesh(new THREE.RingGeometry(T.safe_radius - 0.14, T.safe_radius, 48), new THREE.MeshBasicMaterial({ color: 0xF2C14E, side: THREE.DoubleSide, transparent: true, opacity: 0 }));
       ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; g.add(ring);
       worldGroup.add(g);
-      lanternMeshes.push({ head, light, ring });
+      lanternMeshes.push({ head, light, ring, fuelBar });
       obstacles.push({ x: l.pos[0], y: l.pos[1], z: l.pos[2], r: 0.82, h: 4.5 });
     });
 
@@ -318,16 +322,17 @@
   }
   function addShade(pos) {
     const id = `S${++sSeq}`;
-    sim.shades.push({ id, pos: [...pos], state: 'chase', timer: 0 });
+    sim.shades.push({ id, pos: [...pos], state: 'wander', timer: 0, targetId: null });
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.55, 12), new THREE.MeshStandardMaterial({ color: 0x120A1A, emissive: 0x7A3CFF, emissiveIntensity: 0.65 }));
+    const eyeHex = settings.cb ? 0x00B3FF : 0x7A3CFF;
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.55, 12), new THREE.MeshStandardMaterial({ color: 0x120A1A, emissive: eyeHex, emissiveIntensity: 0.65 }));
     body.position.y = 0.8; body.castShadow = true; g.add(body);
-    const eMat = new THREE.MeshBasicMaterial({ color: 0x7A3CFF });
+    const eMat = new THREE.MeshBasicMaterial({ color: eyeHex });
     const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eMat); e1.position.set(-0.14, 1.05, 0.34);
     const e2 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eMat); e2.position.set(0.14, 1.05, 0.34);
     g.add(e1, e2);
     g.position.set(pos[0], pos[1], pos[2]);
-    worldGroup.add(g); shadeMeshes.set(id, { group: g, body });
+    worldGroup.add(g); shadeMeshes.set(id, { group: g, body, eMat });
     sfx(180, 0.25, 'sawtooth', 0.09);
   }
   function addDrifter(pos) {
@@ -378,8 +383,10 @@
   document.getElementById('btnCloseSettings').onclick = () => {
     settings.vol = parseFloat(document.getElementById('optVol').value);
     settings.sens = parseFloat(document.getElementById('optSens').value);
+    settings.cb = document.getElementById('optCb').checked;
     localStorage.setItem('ddl_vol', settings.vol);
     localStorage.setItem('ddl_sens', settings.sens);
+    localStorage.setItem('ddl_cb', settings.cb ? '1' : '0');
     showScreen(settingsReturn);
   };
 
@@ -494,9 +501,10 @@
       if (p.flames <= 0) return finishNight(false, 'Mây đã tắt hết Ngọn Lửa.');
     }
 
+    const cap = Math.min(20, T.carry_capacity + 2 * p.successfulLights);
     for (let i = sim.motes.length - 1; i >= 0; i--) {
       const m = sim.motes[i];
-      if (p.carried < T.carry_capacity && Math.hypot(p.pos[0] - m.pos[0], p.pos[2] - m.pos[2]) <= 1 && Math.abs(p.pos[1] - m.pos[1]) <= 1.5) {
+      if (p.carried < cap && Math.hypot(p.pos[0] - m.pos[0], p.pos[2] - m.pos[2]) <= 1 && Math.abs(p.pos[1] - m.pos[1]) <= 1.5) {
         p.carried++; worldGroup.remove(moteMeshes.get(m.id)); moteMeshes.delete(m.id); sim.motes.splice(i, 1);
         sfx(660 + p.carried * 40, 0.12, 'sine', 0.08);
       }
@@ -508,35 +516,65 @@
       }
     }
 
+    // Lantern fuel decay & drain
+    for (const l of sim.lanterns) if (l.lit) l.fuelUnits--;
+    for (const s of sim.shades) {
+      if (s.state === 'drain' && s.targetId) {
+        const tl = sim.lanterns.find((x) => x.id === s.targetId);
+        if (tl && tl.lit) tl.fuelUnits -= 5;
+      }
+    }
+    for (const l of sim.lanterns) {
+      if (l.lit && l.fuelUnits <= 0) {
+        l.lit = false; l.fuelUnits = 0; l.deposited = 0; l.everLit = true;
+        sfx(220, 0.25, 'sine', 0.08);
+      }
+    }
+
     let nearL = null;
-    for (const l of sim.lanterns) if (!l.lit && Math.hypot(p.pos[0] - l.pos[0], p.pos[2] - l.pos[2]) <= T.interact_radius) { nearL = l; break; }
+    for (const l of sim.lanterns) {
+      if ((!l.lit || l.fuelUnits < 6000) && Math.hypot(p.pos[0] - l.pos[0], p.pos[2] - l.pos[2]) <= T.interact_radius) { nearL = l; break; }
+    }
     const promptEl = document.getElementById('prompt');
     if (nearL) {
-      promptEl.textContent = p.carried > 0 ? `E — Nạp ánh sáng (${nearL.deposited}/10)` : `Đứng gần đèn (${nearL.deposited}/10) — Hãy nhặt thêm đom đóm`;
+      if (!nearL.lit) {
+        const cost = nearL.everLit ? 5 : 10;
+        promptEl.textContent = p.carried > 0 ? `E — Thắp đèn (${nearL.deposited}/${cost})` : `Đứng gần đèn (${nearL.deposited}/${cost}) — Nhặt thêm đom đóm`;
+      } else {
+        promptEl.textContent = p.carried > 0 ? `E — Châm dầu (${Math.round(nearL.fuelUnits / 60)}/100)` : `Đèn đang sáng (${Math.round(nearL.fuelUnits / 60)}/100)`;
+      }
       promptEl.style.display = 'block';
     } else promptEl.style.display = 'none';
 
     const doInt = queuedInt; queuedInt = false;
     if (doInt && nearL && p.carried > 0) {
-      const amt = Math.min(p.carried, T.lantern_cost - nearL.deposited);
-      p.carried -= amt; nearL.deposited += amt; sim.score += amt * 10; sfx(520, 0.18, 'sine', 0.09);
-      if (nearL.deposited >= T.lantern_cost) {
-        nearL.lit = true; sim.score += 100; sfx(784, 0.4, 'triangle', 0.12);
-        const litC = sim.lanterns.filter((x) => x.lit).length;
-        ambientLight.intensity = 0.15 + 0.55 * (litC / sim.lanterns.length);
-        if (litC === sim.lanterns.length) {
-          sim.score += Math.floor(sim.timeLeft) * 2 + p.flames * 50;
-          return finishNight(true, `Thắp sáng toàn bộ ${sim.lanterns.length} đèn! Điểm Đêm ${sim.night}: ${sim.score}`);
+      if (!nearL.lit) {
+        const cost = nearL.everLit ? 5 : 10;
+        const amt = Math.min(p.carried, cost - nearL.deposited);
+        p.carried -= amt; nearL.deposited += amt; sim.score += amt * 5; sfx(520, 0.18, 'sine', 0.09);
+        if (nearL.deposited >= cost) {
+          nearL.lit = true; nearL.fuelUnits = 6000; p.successfulLights++;
+          sim.score += nearL.everLit ? 40 : 100; nearL.everLit = true;
+          sfx(784, 0.4, 'triangle', 0.12);
+        }
+      } else if (nearL.fuelUnits < 6000) {
+        const used = Math.min(p.carried, Math.ceil((100 - nearL.fuelUnits / 60) / 10));
+        if (used > 0) {
+          p.carried -= used; nearL.fuelUnits = Math.min(6000, nearL.fuelUnits + used * 600);
+          sim.score += used * 5; sfx(600, 0.18, 'sine', 0.09);
         }
       }
     }
+    const litC = sim.lanterns.filter((x) => x.lit).length;
+    ambientLight.intensity = 0.15 + 0.55 * (litC / sim.lanterns.length);
 
     const doPulse = queuedPulse; queuedPulse = false;
     if (doPulse && p.pulseCd === 0 && p.carried >= T.pulse_cost) {
       p.carried -= T.pulse_cost; p.pulseCd = 180; pulseAnim = 1.0; sfx(440, 0.3, 'sine', 0.12);
       for (const s of sim.shades) {
         if (Math.hypot(p.pos[0] - s.pos[0], p.pos[2] - s.pos[2]) <= T.pulse_radius) {
-          s.state = 'stunned'; s.timer = 120; sim.score += 5;
+          sim.score += s.state === 'drain' ? 15 : 5;
+          s.state = 'stunned'; s.timer = 120; s.targetId = null;
           const dx = s.pos[0] - p.pos[0], dz = s.pos[2] - p.pos[2], d = Math.hypot(dx, dz) || 1;
           s.pos[0] += (dx / d) * 4; s.pos[2] += (dz / d) * 4;
         }
@@ -551,11 +589,33 @@
     if (sim.night >= 2 && sim.ticks % 1200 === 0 && sim.drifters.length < 2) addDrifter(sim.shadePts[Math.floor(Math.random() * sim.shadePts.length)]);
 
     for (const s of sim.shades) {
-      if (s.state === 'stunned') { if (--s.timer <= 0) s.state = 'chase'; continue; }
-      const dx = p.pos[0] - s.pos[0], dz = p.pos[2] - s.pos[2], d = Math.hypot(dx, dz) || 1;
-      s.pos[0] += (dx / d) * sim.shadeSpeed * DT; s.pos[2] += (dz / d) * sim.shadeSpeed * DT;
+      if (s.state === 'stunned') { if (--s.timer <= 0) s.state = 'wander'; continue; }
+      const d = Math.hypot(p.pos[0] - s.pos[0], p.pos[2] - s.pos[2]);
+      if (s.state === 'drain') {
+        const tl = sim.lanterns.find((x) => x.id === s.targetId);
+        if (d <= 6) { s.state = 'chase'; s.targetId = null; }
+        else if (!tl || !tl.lit || tl.fuelUnits >= 1800 || Math.hypot(s.pos[0] - tl.pos[0], s.pos[2] - tl.pos[2]) > 2) { s.state = 'wander'; s.targetId = null; }
+        continue;
+      }
+      if (s.state === 'wander') {
+        if (d <= 12) s.state = 'chase';
+        else {
+          const weak = sim.lanterns.filter((x) => x.lit && x.fuelUnits < 1800);
+          const unlit = sim.lanterns.filter((x) => !x.lit);
+          const pool = weak.length ? weak : unlit;
+          if (pool.length) {
+            const tgt = pool.reduce((a, b) => Math.hypot(s.pos[0] - a.pos[0], s.pos[2] - a.pos[2]) <= Math.hypot(s.pos[0] - b.pos[0], s.pos[2] - b.pos[2]) ? a : b);
+            const td = Math.hypot(tgt.pos[0] - s.pos[0], tgt.pos[2] - s.pos[2]) || 1;
+            if (tgt.lit && tgt.fuelUnits < 1800 && td <= 2) { s.state = 'drain'; s.targetId = tgt.id; }
+            else { s.pos[0] += ((tgt.pos[0] - s.pos[0]) / td) * sim.shadeSpeed * DT; s.pos[2] += ((tgt.pos[2] - s.pos[2]) / td) * sim.shadeSpeed * DT; }
+          }
+        }
+      } else if (s.state === 'chase') {
+        if (d > 18) s.state = 'wander';
+        else if (d > 1e-4) { s.pos[0] += ((p.pos[0] - s.pos[0]) / d) * sim.shadeSpeed * DT; s.pos[2] += ((p.pos[2] - s.pos[2]) / d) * sim.shadeSpeed * DT; }
+      }
       for (const l of sim.lanterns) {
-        if (!l.lit) continue;
+        if (!l.lit || l.fuelUnits < 1800) continue;
         const ldx = s.pos[0] - l.pos[0], ldz = s.pos[2] - l.pos[2], ld = Math.hypot(ldx, ldz) || 1;
         if (ld < T.safe_radius) { s.pos[0] = l.pos[0] + (ldx / ld) * (T.safe_radius + 0.05); s.pos[2] = l.pos[2] + (ldz / ld) * (T.safe_radius + 0.05); }
       }
@@ -579,7 +639,16 @@
       }
     }
 
-    if (sim.timeLeft <= 0) return finishNight(false, 'Bình minh đã lên.');
+    if (sim.timeLeft <= 0) {
+      const litList = sim.lanterns.filter((x) => x.lit);
+      const needed = Math.ceil(0.6 * sim.lanterns.length);
+      if (litList.length >= needed) {
+        for (const l of litList) sim.score += 50 + Math.floor(l.fuelUnits / 60);
+        sim.score += p.flames * 50;
+        return finishNight(true, `Sống sót tới bình minh với ${litList.length}/${sim.lanterns.length} đèn sáng! Điểm: ${sim.score}`);
+      }
+      return finishNight(false, `Bình minh lên khi chỉ có ${litList.length}/${sim.lanterns.length} đèn sáng (cần ${needed}).`);
+    }
   }
 
   function finishNight(won, msg) {
@@ -630,20 +699,31 @@
     sim.lanterns.forEach((l, i) => {
       const lm = lanternMeshes[i];
       if (l.lit) {
+        const fuel = l.fuelUnits / 60;
+        const blink = fuel < 30 ? (Math.floor(now / 500) % 2 === 0 ? 1.5 : 0.45) : 1.5;
+        lm.head.scale.y = 1.0;
         lm.head.material.color.setHex(0xFFB347); lm.head.material.emissive.setHex(0xFFE9B0);
-        lm.head.material.emissiveIntensity = 1.5; lm.light.intensity = 3.4; lm.ring.material.opacity = 0.35;
-      } else if (l.deposited > 0) {
-        lm.head.material.emissive.setHex(0xFFB347);
-        lm.head.material.emissiveIntensity = 0.55 * (l.deposited / 10);
-        lm.light.intensity = 0.6;
+        lm.head.material.emissiveIntensity = blink; lm.light.intensity = fuel < 30 ? blink * 2 : 3.4;
+        lm.ring.material.opacity = fuel >= 30 ? 0.35 : 0;
+        lm.fuelBar.visible = fuel >= 30 || Math.floor(now / 500) % 2 === 0;
+        lm.fuelBar.scale.x = Math.max(0.05, fuel / 100);
+        lm.fuelBar.material.color.setHex(fuel < 30 ? (settings.cb ? 0xFFFFFF : 0xFF5A5F) : 0xF2C14E);
+      } else {
+        lm.head.scale.y = 0.8;
+        lm.head.material.color.setHex(0x5B5F6E);
+        lm.head.material.emissive.setHex(l.deposited > 0 ? 0xFFB347 : 0x000000);
+        lm.head.material.emissiveIntensity = l.deposited > 0 ? 0.4 : 0;
+        lm.light.intensity = l.deposited > 0 ? 0.5 : 0; lm.ring.material.opacity = 0; lm.fuelBar.visible = false;
       }
     });
-    for (const m of sim.motes) { const mm = moteMeshes.get(m.id); if (mm) mm.position.y = m.pos[1] + 0.85 + Math.sin(now * 0.0045 + m.pos[0]) * 0.24; }
+    const eyeHex = settings.cb ? 0x00B3FF : 0x7A3CFF;
     for (const s of sim.shades) {
       const sm = shadeMeshes.get(s.id);
       if (sm) {
         sm.group.position.set(s.pos[0], s.pos[1], s.pos[2]);
         sm.body.material.color.setHex(s.state === 'stunned' ? 0x3A3450 : 0x120A1A);
+        sm.body.material.emissive.setHex(eyeHex);
+        sm.eMat.color.setHex(eyeHex);
         sm.group.rotation.y += s.state === 'stunned' ? 0.18 : 0.04;
       }
     }
@@ -654,18 +734,24 @@
     camera.position.set(sim.player.pos[0] + Math.sin(th) * 9.5, sim.player.pos[1] + 5.6, sim.player.pos[2] + Math.cos(th) * 9.5);
     camera.lookAt(sim.player.pos[0], sim.player.pos[1] + 1.2, sim.player.pos[2]);
 
+    const cap = Math.min(20, T.carry_capacity + 2 * sim.player.successfulLights);
     document.getElementById('hudFlames').textContent = sim.player.flames;
+    document.getElementById('hudCarried').textContent = `${sim.player.carried}/${cap}`;
     document.getElementById('hudCharm').textContent = sim.player.charmT > 0 ? `🪶 Bùa ${Math.ceil(sim.player.charmT / 60)}s` : '';
     const secs = Math.ceil(sim.timeLeft);
     const tEl = document.getElementById('hudTime');
-    tEl.textContent = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
+    tEl.textContent = `${secs <= 30 && settings.cb ? '⚠ ' : ''}${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
+    tEl.style.color = secs <= 30 ? (settings.cb ? '#FFFFFF' : '#FF5A5F') : '#F2C14E';
     tEl.className = secs <= 30 ? 'danger' : 'gold';
     document.getElementById('hudLanterns').textContent = `${sim.lanterns.filter((x) => x.lit).length} / ${sim.lanterns.length}`;
     document.getElementById('hudScore').textContent = sim.score;
     document.getElementById('cdDash').textContent = sim.player.dashCd > 0 ? `${(sim.player.dashCd / 60).toFixed(1)}s` : 'Sẵn sàng';
     document.getElementById('cdPulse').textContent = sim.player.pulseCd > 0 ? `${(sim.player.pulseCd / 60).toFixed(1)}s` : 'Sẵn sàng';
     const slots = moteBar.children;
-    for (let i = 0; i < 10; i++) slots[i].className = i < sim.player.carried ? 'mote-slot filled' : 'mote-slot';
+    for (let i = 0; i < 20; i++) {
+      slots[i].style.display = i < cap ? 'block' : 'none';
+      slots[i].className = i < sim.player.carried ? 'mote-slot filled' : 'mote-slot';
+    }
   }
 
   let acc = 0, last = performance.now();

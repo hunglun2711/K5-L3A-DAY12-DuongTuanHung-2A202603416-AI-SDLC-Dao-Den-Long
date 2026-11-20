@@ -1,4 +1,4 @@
-"""Deterministic 60Hz core simulation for Đảo Đèn Lồng (Contract v1.1, Nights 1-3)."""
+"""Deterministic 60Hz core simulation for Đảo Đèn Lồng (Contract v1.2, Nights 1-3)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ JUMP_SPEED = 7.0
 MAX_RANDOM_MOTES = 30
 MOTE_SPAWN_INTERVAL = 240
 DRIFTER_SPAWN_INTERVAL = 1200
+FUEL_UNIT = 60
+FUEL_MAX_UNITS = 100 * FUEL_UNIT
+LOW_FUEL_UNITS = 30 * FUEL_UNIT
 
 
 def r3(val: float) -> float:
@@ -97,7 +100,6 @@ def _night_config(night: int) -> dict[str, Any]:
             ],
             "wind_enabled": False,
         }
-    # Night 3 — Đảo Chuông
     mote_pts = (
         [polar(34.0, i * 20.0, 0.0) for i in range(18)]
         + [polar(18.0, 20.0 + i * 20.0, 3.0) for i in range(8)]
@@ -129,7 +131,6 @@ def _night_config(night: int) -> dict[str, Any]:
 
 
 def ground_height(night: int, x: float, z: float, current_y: float = 0.0) -> float | None:
-    """Return floor Y at (x, z) reachable from current_y, or None if over void."""
     if night == 1:
         return 0.0 if math.hypot(x, z) <= 40.0 else None
     if night == 2:
@@ -137,7 +138,6 @@ def ground_height(night: int, x: float, z: float, current_y: float = 0.0) -> flo
         on_b = math.hypot(x - 70.0, z) <= 28.0
         on_bridge = 26.0 <= x <= 44.0 and -2.0 <= z <= 2.0
         return 0.0 if (on_a or on_b or on_bridge) else None
-    # Night 3
     r = math.hypot(x, z)
     if r > 45.0:
         return None
@@ -159,20 +159,18 @@ def ground_height(night: int, x: float, z: float, current_y: float = 0.0) -> flo
 
 
 def ceiling_or_cliff_blocked(night: int, x: float, z: float, y: float) -> bool:
-    """True if (x, z) at height y hits bell tower or a vertical cliff."""
     if night != 3:
         return False
     r = math.hypot(x, z)
     if r < 2.0 and y >= 5.5:
-        return True  # Bell tower
-    # Check if stepping into higher tier without being high enough
+        return True
     for deg in (30.0, 150.0):
         rad = math.radians(deg)
         ca, sa = math.cos(rad), math.sin(rad)
         proj = x * ca + z * sa
         perp = abs(-x * sa + z * ca)
         if 24.0 <= proj <= 30.0 and perp <= 1.5:
-            return False  # On ramp
+            return False
     if r <= 8.0 and 0.5 < y < 5.65:
         return True
     if 12.0 <= r <= 24.0 and z > 0.0 and 0.5 < y < 2.65:
@@ -186,7 +184,13 @@ class Lantern:
     pos: list[float]
     lit: bool = False
     deposited: int = 0
+    fuel_units: int = 0
+    ever_lit: bool = False
+    relit_count: int = 0
     just_lit_ticks: int = 0
+
+    def fuel_float(self) -> float:
+        return round(self.fuel_units / 60.0, 1) if self.lit else 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -194,6 +198,9 @@ class Lantern:
             "pos": [r3(self.pos[0]), r3(self.pos[1]), r3(self.pos[2])],
             "lit": self.lit,
             "deposited": self.deposited,
+            "fuel": self.fuel_float(),
+            "ever_lit": self.ever_lit,
+            "relit_count": self.relit_count,
         }
 
 
@@ -201,8 +208,10 @@ class Lantern:
 class Shade:
     id: str
     pos: list[float]
-    state: str = "chase"
+    state: str = "wander"
     state_ticks_left: int = 0
+    target_lantern_id: str | None = None
+    drain_ticks: int = 0
     push_vx: float = 0.0
     push_vz: float = 0.0
     push_ticks: int = 0
@@ -278,7 +287,7 @@ class InputState:
 
 
 class GameSim:
-    """Fixed-timestep (60Hz) deterministic game simulation (Contract v1.1)."""
+    """Fixed-timestep (60Hz) deterministic game simulation (Contract v1.2)."""
 
     def __init__(
         self,
@@ -307,9 +316,10 @@ class GameSim:
         # Player
         self.player_pos = [0.0, 0.0, 0.0]
         self.player_vel = [0.0, 0.0, 0.0]
-        self.facing = [0.0, 1.0]  # +Z
+        self.facing = [0.0, 1.0]
         self.grounded = True
         self.carried = 0
+        self.successful_lights = 0
         self.flames = int(self.tuning["flames"])
         self.invuln_ticks = 0
         self.dash_ticks = 0
@@ -352,6 +362,12 @@ class GameSim:
                 self._mote_seq += 1
                 self.motes.append(Mote(id=f"M{self._mote_seq}", pos=list(p), kind="random"))
 
+    @property
+    def capacity(self) -> int:
+        base = int(self.tuning["carry_capacity"])
+        cmax = int(self.tuning.get("capacity_max", 20))
+        return min(cmax, base + 2 * self.successful_lights)
+
     def _apply_scenario(self, sc: dict[str, Any]) -> None:
         if "random_motes" in sc:
             self.random_motes = bool(sc["random_motes"])
@@ -375,6 +391,8 @@ class GameSim:
                 self.carried = int(p["carried"])
             if "flames" in p:
                 self.flames = int(p["flames"])
+            if "successful_lights" in p:
+                self.successful_lights = int(p["successful_lights"])
             if "invuln_ticks" in p:
                 self.invuln_ticks = int(p["invuln_ticks"])
             if "dash_cd_ticks" in p:
@@ -396,6 +414,14 @@ class GameSim:
                         lan.deposited = int(item["deposited"])
                     if "lit" in item:
                         lan.lit = bool(item["lit"])
+                    if "ever_lit" in item:
+                        lan.ever_lit = bool(item["ever_lit"])
+                    elif lan.lit:
+                        lan.ever_lit = True
+                    if "fuel" in item:
+                        lan.fuel_units = int(round(float(item["fuel"]) * FUEL_UNIT))
+                    elif lan.lit:
+                        lan.fuel_units = FUEL_MAX_UNITS
 
         if "motes" in sc:
             self.motes = []
@@ -419,7 +445,8 @@ class GameSim:
                 pos = [float(item["pos"][0]), float(item["pos"][1]), float(item["pos"][2])]
                 st = str(item.get("state", "wander"))
                 stl = int(item.get("state_ticks_left", 0))
-                self.shades.append(Shade(id=sid, pos=pos, state=st, state_ticks_left=stl))
+                tlid = item.get("target_lantern_id")
+                self.shades.append(Shade(id=sid, pos=pos, state=st, state_ticks_left=stl, target_lantern_id=tlid))
 
         if "drifters" in sc:
             self.drifters = []
@@ -460,6 +487,7 @@ class GameSim:
                 "grounded": self.grounded,
                 "flames": self.flames,
                 "carried": self.carried,
+                "capacity": self.capacity,
                 "invuln": self.invuln_ticks > 0,
                 "dash_cd_s": r3(self.dash_cd_ticks * DT),
                 "pulse_cd_s": r3(self.pulse_cd_ticks * DT),
@@ -480,7 +508,7 @@ class GameSim:
         events: list[dict[str, Any]] = []
         next_tick = self.tick + 1
 
-        # 1. Read input (handle pause first)
+        # 1. Read input (pause first)
         self.prev_input = InputState(
             move=list(self.curr_input.move),
             cam_yaw_deg=self.curr_input.cam_yaw_deg,
@@ -520,7 +548,7 @@ class GameSim:
                 self.tick = next_tick
                 return events
 
-        # 2. Decrement timers
+        # 2. Decrement timers & lantern fuel (decay + drain)
         self.sim_tick += 1
         if self.sim_tick == 1:
             events.append({"type": "event", "tick": next_tick, "name": "night_start", "data": {"night": self.night}})
@@ -536,7 +564,6 @@ class GameSim:
         if self.dash_ticks > 0:
             self.dash_ticks -= 1
 
-        # Dropped mote TTL
         kept_motes: list[Mote] = []
         for m in self.motes:
             if m.kind == "dropped":
@@ -546,35 +573,61 @@ class GameSim:
             kept_motes.append(m)
         self.motes = kept_motes
 
-        # Charm respawn
         for c in self.charms:
             if not c.available and c.respawn_ticks > 0:
                 c.respawn_ticks -= 1
                 if c.respawn_ticks == 0:
                     c.available = True
 
-        # Shade state timers
         for s in self.shades:
             if s.state_ticks_left > 0:
                 s.state_ticks_left -= 1
                 if s.state_ticks_left == 0:
-                    if s.state == "spawning":
+                    if s.state in ("spawning", "stunned"):
                         s.state = "wander"
-                    elif s.state in ("stunned", "recoil"):
+                    elif s.state == "recoil":
                         s.state = "chase"
 
-        # Wind timer (Night 3)
+        # Lantern fuel decay & drain
+        lantern_by_id = {l.id: l for l in self.lanterns}
+        for l in self.lanterns:
+            if l.lit:
+                l.fuel_units -= 1
+
+        for s in self.shades:
+            if s.state == "drain" and s.target_lantern_id and s.target_lantern_id in lantern_by_id:
+                tl = lantern_by_id[s.target_lantern_id]
+                if tl.lit:
+                    tl.fuel_units -= 5
+                    s.drain_ticks += 1
+                    if s.drain_ticks % 60 == 0:
+                        events.append({
+                            "type": "event",
+                            "tick": next_tick,
+                            "name": "fuel_drain",
+                            "data": {"lantern_id": tl.id, "shade_id": s.id, "fuel": round(max(0, tl.fuel_units) / 60.0, 1)},
+                        })
+
+        for l in self.lanterns:
+            if l.lit and l.fuel_units <= 0:
+                l.lit = False
+                l.fuel_units = 0
+                l.deposited = 0
+                l.ever_lit = True
+                l.just_lit_ticks = 0
+                events.append({"type": "event", "tick": next_tick, "name": "lantern_out", "data": {"lantern_id": l.id}})
+
         if self.wind_enabled:
             self.wind_timer -= 1
             if self.wind_active and self.wind_timer <= 0:
                 self.wind_active = False
-                self.wind_timer = 1500  # 25s until next gust (total 30s cycle)
+                self.wind_timer = 1500
             elif not self.wind_active and self.wind_timer <= 0:
                 self.wind_active = True
                 self.wind_dir_deg = self.rng.uniform(0.0, 360.0)
-                self.wind_timer = 300  # 5s gust
+                self.wind_timer = 300
 
-        # 3. Move Mây (jump, dash, jump pads, wind) & check fall
+        # 3. Move Mây & check fall
         if self.fall_respawn_ticks > 0:
             self.fall_respawn_ticks -= 1
             if self.fall_respawn_ticks == 0:
@@ -597,7 +650,6 @@ class GameSim:
             if mag > 1e-4:
                 self.facing = [wx / mag, wz / mag]
 
-            # Dash trigger
             if (
                 self.curr_input.dash
                 and not self.prev_input.dash
@@ -632,12 +684,10 @@ class GameSim:
             self.player_vel[0] = vx
             self.player_vel[2] = vz
 
-            # Jump
             if self.curr_input.jump and not self.prev_input.jump and self.grounded and self.dash_ticks == 0:
                 self.player_vel[1] = JUMP_SPEED
                 self.grounded = False
 
-            # Gravity if not dashing
             if self.dash_ticks == 0:
                 gh = ground_height(self.night, self.player_pos[0], self.player_pos[2], self.player_pos[1])
                 if not self.grounded or gh is None or self.player_pos[1] > gh + 0.01:
@@ -657,7 +707,6 @@ class GameSim:
                     self.grounded = True
                     self.launched = False
 
-            # Jump pads
             for jp in self.cfg["jump_pads"]:
                 if xz_dist(self.player_pos, jp["pos"]) <= 1.0 and abs(self.player_pos[1] - jp["pos"][1]) <= 1.0:
                     if "target" in jp:
@@ -672,7 +721,6 @@ class GameSim:
                     self.launched = True
                     break
 
-            # Fall check (Y < -10)
             if self.tuning["fall_enabled"] and not self.fall_triggered and self.player_pos[1] < -10.0:
                 self.fall_triggered = True
                 self.flames = max(0, self.flames - 1)
@@ -696,9 +744,9 @@ class GameSim:
                     return events
                 self.fall_respawn_ticks = 60
 
-        # 4. Pickup motes & charms (if not waiting to respawn)
+        # 4. Pickup motes & charms
         if self.fall_respawn_ticks == 0:
-            cap = int(self.tuning["carry_capacity"])
+            cap = self.capacity
             pr = float(self.tuning["pickup_radius"])
             rem_motes: list[Mote] = []
             for m in self.motes:
@@ -721,34 +769,68 @@ class GameSim:
                     self.charm_ticks = 600
                     events.append({"type": "event", "tick": next_tick, "name": "charm_picked", "data": {"charm_id": c.id, "charm_ticks": 600}})
 
-        # 5. Interact with nearest unlit lantern
-        if self.fall_respawn_ticks == 0 and self.curr_input.interact and not self.prev_input.interact:
+        # 5. Interact with lantern (light, relight, or refuel)
+        if self.fall_respawn_ticks == 0 and self.curr_input.interact and not self.prev_input.interact and self.carried > 0:
             ir = float(self.tuning["interact_radius"])
-            cost = int(self.tuning["lantern_cost"])
-            cands = [l for l in self.lanterns if not l.lit and xz_dist(self.player_pos, l.pos) <= ir]
-            if cands and self.carried > 0:
+            cands = [
+                l for l in self.lanterns
+                if ((not l.lit) or (l.lit and l.fuel_units < FUEL_MAX_UNITS)) and xz_dist(self.player_pos, l.pos) <= ir
+            ]
+            if cands:
                 target = min(cands, key=lambda l: (xz_dist(self.player_pos, l.pos), l.id))
-                amt = min(self.carried, cost - target.deposited)
-                if amt > 0:
-                    self.carried -= amt
-                    target.deposited += amt
-                    self.score += amt * int(self.tuning["score"]["per_mote"])
-                    events.append({
-                        "type": "event",
-                        "tick": next_tick,
-                        "name": "deposit",
-                        "data": {"lantern_id": target.id, "amount": amt, "deposited": target.deposited},
-                    })
-                    if target.deposited >= cost:
-                        target.lit = True
-                        target.just_lit_ticks = 30
-                        self.score += int(self.tuning["score"]["per_lantern"])
-                        events.append({"type": "event", "tick": next_tick, "name": "lantern_lit", "data": {"lantern_id": target.id}})
+                if not target.lit:
+                    cost = int(self.tuning["relight_cost"]) if target.ever_lit else int(self.tuning["lantern_cost"])
+                    amt = min(self.carried, cost - target.deposited)
+                    if amt > 0:
+                        self.carried -= amt
+                        target.deposited += amt
+                        self.score += amt * int(self.tuning["score"]["per_mote"])
+                        events.append({
+                            "type": "event",
+                            "tick": next_tick,
+                            "name": "deposit",
+                            "data": {"lantern_id": target.id, "amount": amt, "deposited": target.deposited},
+                        })
+                        if target.deposited >= cost:
+                            relight = target.ever_lit
+                            target.lit = True
+                            target.fuel_units = FUEL_MAX_UNITS
+                            target.just_lit_ticks = 30
+                            self.successful_lights += 1
+                            if relight:
+                                target.relit_count += 1
+                                self.score += int(self.tuning["score"]["per_relight"])
+                            else:
+                                target.ever_lit = True
+                                self.score += int(self.tuning["score"]["per_lantern"])
+                            events.append({
+                                "type": "event",
+                                "tick": next_tick,
+                                "name": "lantern_lit",
+                                "data": {"lantern_id": target.id, "relight": relight},
+                            })
+                else:
+                    fuel_f = target.fuel_units / 60.0
+                    needed = math.ceil((100.0 - fuel_f) / 10.0)
+                    used = min(self.carried, needed)
+                    if used > 0:
+                        was_low = target.fuel_units < LOW_FUEL_UNITS
+                        self.carried -= used
+                        target.fuel_units = min(FUEL_MAX_UNITS, target.fuel_units + 600 * used)
+                        self.score += used * int(self.tuning["score"]["per_mote"])
+                        events.append({
+                            "type": "event",
+                            "tick": next_tick,
+                            "name": "refuel",
+                            "data": {"lantern_id": target.id, "amount": used, "fuel": target.fuel_float()},
+                        })
+                        if was_low and target.fuel_units >= LOW_FUEL_UNITS:
+                            target.just_lit_ticks = 30
 
-        # 6. Safe zones around lit lanterns
+        # 6. Safe zones (only when lit AND fuel >= 30)
         safe_r = float(self.tuning["safe_radius"])
         for lan in self.lanterns:
-            if not lan.lit:
+            if not lan.lit or lan.fuel_units < LOW_FUEL_UNITS:
                 continue
             if lan.just_lit_ticks > 0:
                 lan.just_lit_ticks -= 1
@@ -766,7 +848,7 @@ class GameSim:
                         s.pos[0] = lan.pos[0] + ux * (safe_r + 0.01)
                         s.pos[2] = lan.pos[2] + uz * (safe_r + 0.01)
 
-        # 7. Pulse (Tỏa Sáng)
+        # 7. Pulse
         if self.fall_respawn_ticks == 0 and self.curr_input.pulse and not self.prev_input.pulse:
             p_cost = int(self.tuning["pulse_cost"])
             if self.pulse_cd_ticks == 0 and self.carried >= p_cost:
@@ -778,8 +860,11 @@ class GameSim:
                 for s in self.shades:
                     s_center = [s.pos[0], s.pos[1] + 0.8, s.pos[2]]
                     if dist_3d(p_center, s_center) <= p_rad or dist_3d(p_center, s.pos) <= p_rad:
+                        was_drain = s.state == "drain"
                         s.state = "stunned"
                         s.state_ticks_left = 120
+                        s.target_lantern_id = None
+                        s.drain_ticks = 0
                         dx = s.pos[0] - self.player_pos[0]
                         dz = s.pos[2] - self.player_pos[2]
                         d = math.hypot(dx, dz)
@@ -787,7 +872,7 @@ class GameSim:
                         s.push_vx = (ux * float(self.tuning["pulse_push_m"])) / 15.0
                         s.push_vz = (uz * float(self.tuning["pulse_push_m"])) / 15.0
                         s.push_ticks = 15
-                        self.score += int(self.tuning["score"]["per_stun"])
+                        self.score += int(self.tuning["score"]["per_drain_stun"] if was_drain else self.tuning["score"]["per_stun"])
                         stunned_ids.append(s.id)
                 events.append({"type": "event", "tick": next_tick, "name": "pulse", "data": {"stunned_ids": stunned_ids}})
 
@@ -809,7 +894,10 @@ class GameSim:
 
         # 8. Move Shades & Drifters
         s_spd = float(self.cfg["shade_speed"])
-        lit_lanterns = [l for l in self.lanterns if l.lit]
+        safe_lanterns = [l for l in self.lanterns if l.lit and l.fuel_units >= LOW_FUEL_UNITS]
+        weak_lanterns = [l for l in self.lanterns if l.lit and l.fuel_units < LOW_FUEL_UNITS]
+        unlit_lanterns = [l for l in self.lanterns if not l.lit]
+
         for s in self.shades:
             if s.state == "spawning":
                 continue
@@ -817,30 +905,58 @@ class GameSim:
                 s.pos[0] += s.push_vx
                 s.pos[2] += s.push_vz
                 s.push_ticks -= 1
-            if s.state in ("stunned", "recoil"):
-                if s.state == "recoil":
-                    dx = s.pos[0] - self.player_pos[0]
-                    dz = s.pos[2] - self.player_pos[2]
-                    d = math.hypot(dx, dz)
-                    ux, uz = (dx / d, dz / d) if d > 1e-6 else (1.0, 0.0)
-                    s.pos[0] += ux * (2.0 / 60.0)
-                    s.pos[2] += uz * (2.0 / 60.0)
+            if s.state == "stunned":
+                continue
+            if s.state == "recoil":
+                dx = s.pos[0] - self.player_pos[0]
+                dz = s.pos[2] - self.player_pos[2]
+                d = math.hypot(dx, dz)
+                ux, uz = (dx / d, dz / d) if d > 1e-6 else (1.0, 0.0)
+                s.pos[0] += ux * (2.0 / 60.0)
+                s.pos[2] += uz * (2.0 / 60.0)
                 continue
 
             d_to_p = xz_dist(self.player_pos, s.pos)
-            if s.state == "wander" and d_to_p <= 12.0:
-                s.state = "chase"
-            elif s.state == "chase" and d_to_p > 18.0:
-                s.state = "wander"
+            if s.state == "drain":
+                tl = lantern_by_id.get(s.target_lantern_id or "")
+                if d_to_p <= 6.0:
+                    s.state = "chase"
+                    s.target_lantern_id = None
+                    s.drain_ticks = 0
+                elif tl is None or not tl.lit or tl.fuel_units >= LOW_FUEL_UNITS or xz_dist(s.pos, tl.pos) > 2.0:
+                    s.state = "wander"
+                    s.target_lantern_id = None
+                    s.drain_ticks = 0
+                continue
 
-            if s.state == "chase" and d_to_p > 1e-6:
-                dx = self.player_pos[0] - s.pos[0]
-                dz = self.player_pos[2] - s.pos[2]
-                step_d = min(d_to_p, s_spd * DT)
-                s.pos[0] += (dx / d_to_p) * step_d
-                s.pos[2] += (dz / d_to_p) * step_d
+            if s.state == "wander":
+                if d_to_p <= 12.0:
+                    s.state = "chase"
+                else:
+                    target = None
+                    if weak_lanterns:
+                        target = min(weak_lanterns, key=lambda l: (xz_dist(s.pos, l.pos), l.id))
+                    elif unlit_lanterns:
+                        target = min(unlit_lanterns, key=lambda l: (xz_dist(s.pos, l.pos), l.id))
+                    if target is not None:
+                        td = xz_dist(s.pos, target.pos)
+                        if target.lit and target.fuel_units < LOW_FUEL_UNITS and td <= 2.0:
+                            s.state = "drain"
+                            s.target_lantern_id = target.id
+                            s.drain_ticks = 0
+                        elif td > 1e-6:
+                            step_d = min(td, s_spd * DT)
+                            s.pos[0] += ((target.pos[0] - s.pos[0]) / td) * step_d
+                            s.pos[2] += ((target.pos[2] - s.pos[2]) / td) * step_d
+            elif s.state == "chase":
+                if d_to_p > 18.0:
+                    s.state = "wander"
+                elif d_to_p > 1e-6:
+                    step_d = min(d_to_p, s_spd * DT)
+                    s.pos[0] += ((self.player_pos[0] - s.pos[0]) / d_to_p) * step_d
+                    s.pos[2] += ((self.player_pos[2] - s.pos[2]) / d_to_p) * step_d
 
-            for lan in lit_lanterns:
+            for lan in safe_lanterns:
                 ldx = s.pos[0] - lan.pos[0]
                 ldz = s.pos[2] - lan.pos[2]
                 ld = math.hypot(ldx, ldz)
@@ -874,7 +990,7 @@ class GameSim:
                 if dr.state_ticks_left <= 0:
                     dr.state = "removed"
 
-        # 9. Collisions: Drifters steal first, then Shades hit (sorted by id)
+        # 9. Collisions
         if self.fall_respawn_ticks == 0:
             for dr in sorted(self.drifters, key=lambda x: x.id):
                 if dr.born_tick >= next_tick or dr.state != "chase" or dr.has_stolen:
@@ -896,7 +1012,7 @@ class GameSim:
             if self.invuln_ticks == 0:
                 hit_r = float(self.tuning["shade_hit_radius"])
                 for s in sorted(self.shades, key=lambda x: x.id):
-                    if s.state in ("spawning", "stunned", "recoil"):
+                    if s.state in ("spawning", "stunned", "recoil", "drain"):
                         continue
                     if xz_dist(self.player_pos, s.pos) <= hit_r and abs(self.player_pos[1] - s.pos[1]) <= 1.5:
                         self.flames = max(0, self.flames - 1)
@@ -905,7 +1021,7 @@ class GameSim:
                         self.invuln_ticks = 90
                         s.state = "recoil"
                         s.state_ticks_left = 60
-                        for i in range(dropped):
+                        for _ in range(dropped):
                             ang = self.rng.uniform(0.0, 2.0 * math.pi)
                             rad = self.rng.uniform(1.5, 2.5)
                             mx = r3(self.player_pos[0] + rad * math.cos(ang))
@@ -917,7 +1033,7 @@ class GameSim:
                             "name": "player_hit",
                             "data": {"by": "shade", "flames": self.flames, "dropped": dropped},
                         })
-                        break  # Max 1 flame lost per tick
+                        break
 
         # 10. Scheduled spawns
         if self.random_motes and self.sim_tick % MOTE_SPAWN_INTERVAL == 0 and len(self.motes) < MAX_RANDOM_MOTES:
@@ -950,18 +1066,22 @@ class GameSim:
                 did = f"D{self._drifter_seq}"
                 self.drifters.append(Drifter(id=did, pos=list(chosen), state="idle", born_tick=next_tick))
 
-        # 11. Win/Loss check
+        # 11. Win/Loss check (flames <= 0 checked first, then dawn_survived vs dawn)
         if self.flames <= 0:
             self.state = "lost"
             events.append({"type": "event", "tick": next_tick, "name": "game_over", "data": {"result": "lost", "reason": "no_flames"}})
-        elif all(l.lit for l in self.lanterns):
-            self.state = "won"
-            self.score += int(self.time_left_s) * int(self.tuning["score"]["per_second_left"])
-            self.score += self.flames * int(self.tuning["score"]["per_flame_left"])
-            events.append({"type": "event", "tick": next_tick, "name": "game_over", "data": {"result": "won", "reason": "all_lit"}})
         elif self.time_left_s <= 0.0:
-            self.state = "lost"
-            events.append({"type": "event", "tick": next_tick, "name": "game_over", "data": {"result": "lost", "reason": "dawn"}})
+            lit_lanterns = [l for l in self.lanterns if l.lit]
+            needed = math.ceil(float(self.tuning.get("win_ratio", 0.6)) * len(self.lanterns))
+            if len(lit_lanterns) >= needed:
+                self.state = "won"
+                for l in lit_lanterns:
+                    self.score += int(self.tuning["score"]["per_lit_dawn"]) + (l.fuel_units // 60)
+                self.score += self.flames * int(self.tuning["score"]["per_flame_left"])
+                events.append({"type": "event", "tick": next_tick, "name": "game_over", "data": {"result": "won", "reason": "dawn_survived"}})
+            else:
+                self.state = "lost"
+                events.append({"type": "event", "tick": next_tick, "name": "game_over", "data": {"result": "lost", "reason": "dawn"}})
 
         self.tick = next_tick
         return events
