@@ -14,9 +14,11 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
-from src.leaderboard import add_entry, export_leaderboard, load_leaderboard
-
 ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from src.leaderboard import add_entry, export_leaderboard, load_leaderboard
 
 
 class GameHandler(http.server.SimpleHTTPRequestHandler):
