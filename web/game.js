@@ -213,16 +213,28 @@
       shadeInt = 420; maxShades = 8;
     } else {
       const t0 = new THREE.Mesh(new THREE.CylinderGeometry(45, 42, 2.6, 48), grassMat); t0.position.y = -1.3; t0.receiveShadow = true; worldGroup.add(t0);
-      const t1 = new THREE.Mesh(new THREE.CylinderGeometry(24, 24, 3, 32, 1, false, 0, Math.PI), sandMat);
-      t1.rotation.y = -Math.PI / 2; t1.position.y = 1.5; t1.receiveShadow = true; worldGroup.add(t1);
-      const t2 = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 6, 24), grassMat); t2.position.y = 3; t2.receiveShadow = true; worldGroup.add(t2);
+      // Tier 1: elevated half-annulus (12..24m, z > 0, Y = 3)
+      const t1Shape = new THREE.Shape();
+      t1Shape.absarc(0, 0, 24, 0, Math.PI, false);
+      t1Shape.absarc(0, 0, 12, Math.PI, 0, true);
+      const t1Geo = new THREE.ExtrudeGeometry(t1Shape, { depth: 0.6, bevelEnabled: false, curveSegments: 32 });
+      const t1 = new THREE.Mesh(t1Geo, sandMat);
+      t1.rotation.x = Math.PI / 2; t1.position.y = 3.0; t1.receiveShadow = true; worldGroup.add(t1);
+      // Tier 2: elevated disk (r <= 8m, Y = 6) supported by pillars so (0,0,0) is open
+      const t2 = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 0.7, 28), grassMat);
+      t2.position.y = 5.65; t2.receiveShadow = true; worldGroup.add(t2);
+      for (const a of [45, 135, 225, 315]) {
+        const pp = polar(6.2, a, 0);
+        const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 6, 10), woodMat);
+        pil.position.set(pp[0], 3, pp[2]); worldGroup.add(pil);
+      }
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.2, 8, 16), woodMat); tower.position.y = 10; tower.castShadow = true; worldGroup.add(tower);
       const roof = new THREE.Mesh(new THREE.ConeGeometry(3.2, 2.2, 16), new THREE.MeshStandardMaterial({ color: 0xC8102E })); roof.position.y = 15.1; worldGroup.add(roof);
-      // 2 Ramps at 30 deg & 150 deg
+      // 2 Ramps at 30 deg & 150 deg (r=30 Y=0 -> r=24 Y=3)
       for (const deg of [30, 150]) {
         const rad = (deg * Math.PI) / 180;
-        const ramp = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.4, 3.0), woodMat);
-        ramp.position.set(27 * Math.cos(rad), 1.45, 27 * Math.sin(rad));
+        const ramp = new THREE.Mesh(new THREE.BoxGeometry(6.7, 0.4, 3.0), woodMat);
+        ramp.position.set(27 * Math.cos(rad), 1.35, 27 * Math.sin(rad));
         ramp.rotation.y = -rad;
         ramp.rotation.z = Math.atan2(3, 6);
         worldGroup.add(ramp);
@@ -344,6 +356,8 @@
     showScreen('introScreen');
   }
   document.getElementById('btnStart').onclick = () => { totalScore = 0; startIntro(1); };
+  document.getElementById('btnNight2').onclick = () => { totalScore = 0; startIntro(2); };
+  document.getElementById('btnNight3').onclick = () => { totalScore = 0; startIntro(3); };
   document.getElementById('btnBeginNight').onclick = () => buildNight(curNight);
   document.getElementById('btnResume').onclick = () => { mode = 'playing'; showScreen(null); };
   document.getElementById('btnRestartNight').onclick = () => buildNight(curNight);
@@ -365,8 +379,18 @@
     const r = Math.hypot(x, z);
     if (r > 45) return null;
     let h = 0;
-    if (r <= 8 && y >= 5.5) h = 6;
-    else if (r >= 12 && r <= 24 && z > 0 && y >= 2.5) h = 3;
+    if (r <= 8 && y >= 5.5) h = Math.max(h, 6);
+    if (r >= 12 && r <= 24 && z > 0 && y >= 2.5) h = Math.max(h, 3);
+    for (const deg of [30, 150]) {
+      const rad = (deg * Math.PI) / 180;
+      const ca = Math.cos(rad), sa = Math.sin(rad);
+      const proj = x * ca + z * sa;
+      const perp = Math.abs(-x * sa + z * ca);
+      if (proj >= 24 && proj <= 30 && perp <= 1.5) {
+        const ry = 3 * (30 - proj) / 6;
+        if (y >= ry - 0.5) h = Math.max(h, ry);
+      }
+    }
     return h;
   }
 
@@ -533,6 +557,9 @@
     if (won) totalScore += sim.score;
     sfx(won ? 880 : 140, 0.5, 'triangle', 0.14);
     const btn = document.getElementById('btnNextOrRetry');
+    const replayBtn = document.getElementById('btnReplayThis');
+    replayBtn.style.display = won ? 'inline-block' : 'none';
+    replayBtn.onclick = () => buildNight(curNight);
     if (won && curNight < 3) {
       document.getElementById('resTitle').textContent = `Qua Đêm ${curNight}!`;
       document.getElementById('resDesc').textContent = `${msg} · Tổng điểm: ${totalScore}`;
