@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+*.jsonl
+!docs/proof/*.jsonl
+.DS_Store
+Thumbs.db

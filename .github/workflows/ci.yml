@@ -1,0 +1,27 @@
+name: CI Verify
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pytest
+        run: pip install pytest
+      - name: Compile check
+        run: python3 -m py_compile src/sim.py src/headless.py src/server.py
+      - name: Run pytest
+        run: pytest -v
+      - name: Headless determinism smoke test
+        run: |
+          python3 -m src.headless --seed 42 --night 1 --ticks 300 --out /tmp/run1.jsonl
+          python3 -m src.headless --seed 42 --night 1 --ticks 300 --out /tmp/run2.jsonl
+          diff -u /tmp/run1.jsonl /tmp/run2.jsonl
