@@ -234,9 +234,10 @@
       for (const deg of [30, 150]) {
         const rad = (deg * Math.PI) / 180;
         const ramp = new THREE.Mesh(new THREE.BoxGeometry(6.7, 0.4, 3.0), woodMat);
-        ramp.position.set(27 * Math.cos(rad), 1.35, 27 * Math.sin(rad));
+        ramp.position.set(27 * Math.cos(rad), 1.3, 27 * Math.sin(rad));
+        ramp.rotation.order = 'YXZ';
         ramp.rotation.y = -rad;
-        ramp.rotation.z = Math.atan2(3, 6);
+        ramp.rotation.z = -Math.atan2(3, 6);
         worldGroup.add(ramp);
       }
       lanterns = [[0,6,6],[18,3,10],[-18,3,10],[35,0,-10],[-35,0,-10],[20,0,-35],[-20,0,-35]];
@@ -436,7 +437,16 @@
     let vx = p.dashT > 0 ? p.dashDir[0] * T.dash_speed : (p.launched ? p.vel[0] : wx * (p.charmT > 0 ? 7.2 : T.player_speed));
     let vz = p.dashT > 0 ? p.dashDir[1] * T.dash_speed : (p.launched ? p.vel[2] : wz * (p.charmT > 0 ? 7.2 : T.player_speed));
     if (sim.windActive) { const wr = (sim.windDir * Math.PI) / 180; vx += 2 * Math.cos(wr); vz += 2 * Math.sin(wr); }
-    p.pos[0] += vx * DT; p.pos[2] += vz * DT; p.vel[0] = vx; p.vel[2] = vz;
+    const nx = p.pos[0] + vx * DT, nz = p.pos[2] + vz * DT;
+    let blocked = false;
+    if (sim.night === 3) {
+      const nr = Math.hypot(nx, nz);
+      if (nr < 2.2 && p.pos[1] >= 5.5) blocked = true; // Bell tower
+      if (nr <= 8 && p.pos[1] > 0.5 && p.pos[1] < 5.65) blocked = true; // Tier 2 cliff
+      if (nr >= 12 && nr <= 24 && nz > 0 && p.pos[1] > 0.5 && p.pos[1] < 2.65) blocked = true; // Tier 1 cliff
+    }
+    if (!blocked) { p.pos[0] = nx; p.pos[2] = nz; }
+    p.vel[0] = vx; p.vel[2] = vz;
 
     const doJump = queuedJump; queuedJump = false;
     if (doJump && p.grounded && p.dashT === 0) { p.vel[1] = 7; p.grounded = false; sfx(330, 0.1, 'triangle', 0.07); }
