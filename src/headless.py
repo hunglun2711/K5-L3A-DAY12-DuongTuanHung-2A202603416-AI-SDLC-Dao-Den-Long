@@ -102,7 +102,6 @@ def main(argv: list[str] | None = None) -> int:
 
     lines: list[str] = []
     lines.append(json.dumps(sim.snapshot(), separators=(",", ":")))
-    lines.append(json.dumps({"type": "event", "tick": 0, "name": "night_start", "data": {"night": sim.night}}, separators=(",", ":")))
 
     for k in range(args.ticks):
         if sim.state in ("won", "lost"):

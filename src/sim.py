@@ -173,11 +173,9 @@ def ceiling_or_cliff_blocked(night: int, x: float, z: float, y: float) -> bool:
         perp = abs(-x * sa + z * ca)
         if 24.0 <= proj <= 30.0 and perp <= 1.5:
             return False  # On ramp
-    if r <= 8.0 and y < 5.65 and y > 0.5:
+    if r <= 8.0 and 0.5 < y < 5.65:
         return True
-    if 12.0 <= r <= 24.0 and z > 0.0 and y < 2.65:
-        return True
-    if r <= 8.0 and y < 5.65:
+    if 12.0 <= r <= 24.0 and z > 0.0 and 0.5 < y < 2.65:
         return True
     return False
 
@@ -419,7 +417,7 @@ class GameSim:
                 self._shade_seq += 1
                 sid = str(item.get("id") or f"S{self._shade_seq}")
                 pos = [float(item["pos"][0]), float(item["pos"][1]), float(item["pos"][2])]
-                st = str(item.get("state", "chase"))
+                st = str(item.get("state", "wander"))
                 stl = int(item.get("state_ticks_left", 0))
                 self.shades.append(Shade(id=sid, pos=pos, state=st, state_ticks_left=stl))
 
@@ -524,6 +522,8 @@ class GameSim:
 
         # 2. Decrement timers
         self.sim_tick += 1
+        if self.sim_tick == 1:
+            events.append({"type": "event", "tick": next_tick, "name": "night_start", "data": {"night": self.night}})
         self.time_left_s = max(0.0, self.initial_time_left_s - self.sim_tick * DT)
         if self.invuln_ticks > 0:
             self.invuln_ticks -= 1
@@ -557,8 +557,11 @@ class GameSim:
         for s in self.shades:
             if s.state_ticks_left > 0:
                 s.state_ticks_left -= 1
-                if s.state_ticks_left == 0 and s.state in ("stunned", "recoil", "spawning"):
-                    s.state = "chase"
+                if s.state_ticks_left == 0:
+                    if s.state == "spawning":
+                        s.state = "wander"
+                    elif s.state in ("stunned", "recoil"):
+                        s.state = "chase"
 
         # Wind timer (Night 3)
         if self.wind_enabled:
@@ -936,7 +939,7 @@ class GameSim:
                     chosen = self.rng.choice(valid)
                     self._shade_seq += 1
                     sid = f"S{self._shade_seq}"
-                    self.shades.append(Shade(id=sid, pos=list(chosen), state="spawning", state_ticks_left=30))
+                    self.shades.append(Shade(id=sid, pos=list(chosen), state="spawning", state_ticks_left=60))
                     events.append({"type": "event", "tick": next_tick, "name": "shade_spawned", "data": {"id": sid}})
 
         if self.random_drifters and self.sim_tick % DRIFTER_SPAWN_INTERVAL == 0:
