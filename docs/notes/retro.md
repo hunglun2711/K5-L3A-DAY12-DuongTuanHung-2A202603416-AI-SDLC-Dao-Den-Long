@@ -18,7 +18,14 @@
 3. **Chỉnh Harness**: Thêm quy tắc bắt buộc trong `AGENTS.md` về tính `fuel` bằng số nguyên `1/60` (`fuel_units`), quy tắc không sửa tay output, và skill `verify-phase` chạy compile + pytest + determinism + benchmark.
 
 ## 4. Ước tính Token & Cách tiết kiệm
-- **Tổng ước tính 4 Phase**: ~105k input tokens, ~48k output tokens (Gemini 4 Hydrogen Medium).
+| Phase | Input tokens (ước tính) | Output tokens (ước tính) | Ghi chú |
+|---|---:|---:|---|
+| Phase 1 | ~18k | ~9k | Thiết kế lõi `src/sim.py`, WebGL Đêm 1, harness & 7 tests |
+| Phase 2 | ~26k | ~14k | Mở rộng 3 Đêm, Dash, Gió Lạc, Bùa Gió, Pause & 6 tests mới |
+| Phase 3 | ~24k | ~11k | Cơ chế nhiên liệu nguyên `1/60`, `drain`, `dawn_survived`, ADR-01 |
+| Phase 4 | ~37k | ~14k | Benchmark, Soak, Leaderboard, Accessibility, Retro & đóng gói |
+| **Tổng** | **~105k** | **~48k** | **Model: Gemini 4 Hydrogen Medium** |
+
 - **Cách tiết kiệm**: Giữ `AGENTS.md` ngắn (~15 dòng), batch nhiều thao tác đọc/sửa song song, dùng Python stdlib không cài framework nặng, chỉ gửi phần diff/hàm cần sửa.
 
 ## 5. Nếu làm lại thì đổi gì?

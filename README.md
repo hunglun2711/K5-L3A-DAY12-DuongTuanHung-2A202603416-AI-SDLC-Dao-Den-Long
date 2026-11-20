@@ -34,6 +34,7 @@ python3 src/server.py --export-leaderboard leaderboard_export.json
 
 ## Sáng tạo của tôi
 - **Âm thanh tổng hợp Web Audio API** + **biển mây trôi & vòng an toàn vàng** quanh các Đèn Lồng Lớn sáng (tắt hoàn toàn trong chế độ headless và benchmark).
+- **Bằng chứng không phá Test Contract**: Toàn bộ hiệu ứng chỉ chạy ở tầng hiển thị `web/game.js`, không chạm `src/sim.py` — xác nhận bởi `20/20` test đạt (`tests/test_contract_p1..p4.py`) và đầu ra headless JSONL trùng khớp SHA256 tuyệt đối ([docs/proof/phase-4-proof.md](docs/proof/phase-4-proof.md)).
 
 ## Tài liệu & Bằng chứng
 - ADR-01: [docs/notes/phase-3-adr.md](docs/notes/phase-3-adr.md) · Retro: [docs/notes/retro.md](docs/notes/retro.md)
