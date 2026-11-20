@@ -1,4 +1,4 @@
-"""Headless CLI runner conforming to Test Contract v1.0."""
+"""Headless CLI runner conforming to Test Contract v1.1."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def parse_scenario(path: str | Path) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Đảo Đèn Lồng Headless Runner (Test Contract v1.0)")
+    parser = argparse.ArgumentParser(description="Đảo Đèn Lồng Headless Runner (Test Contract v1.1)")
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--night", type=int, required=True)
     parser.add_argument("--scenario", type=str, default=None)
@@ -69,8 +69,8 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code) if exc.code is not None else 1
 
-    if args.night != 1:
-        return _err(f"Unsupported night {args.night} in Phase 1", 1)
+    if args.night not in (1, 2, 3):
+        return _err(f"Unsupported night {args.night} (expected 1, 2, or 3)", 1)
     if args.ticks < 0:
         return _err("--ticks must be >= 0", 1)
     if args.snapshot_every <= 0:
@@ -101,18 +101,18 @@ def main(argv: list[str] | None = None) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines: list[str] = []
-    # Tick 0 snapshot before any input
     lines.append(json.dumps(sim.snapshot(), separators=(",", ":")))
+    lines.append(json.dumps({"type": "event", "tick": 0, "name": "night_start", "data": {"night": sim.night}}, separators=(",", ":")))
 
     for k in range(args.ticks):
-        if sim.state != "playing":
+        if sim.state in ("won", "lost"):
             break
         events = sim.step(frames_by_tick.get(k))
         for ev in events:
             lines.append(json.dumps(ev, separators=(",", ":")))
         if sim.tick % args.snapshot_every == 0:
             lines.append(json.dumps(sim.snapshot(), separators=(",", ":")))
-        if sim.state != "playing":
+        if sim.state in ("won", "lost"):
             break
 
     lines.append(json.dumps({

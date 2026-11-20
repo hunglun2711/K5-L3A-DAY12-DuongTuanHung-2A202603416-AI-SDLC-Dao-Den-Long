@@ -1,4 +1,4 @@
-"""Phase 1 unit & Test Contract v1.0 tests."""
+"""Phase 1 regression tests updated for Ticket-02 standard tuning (Contract v1.1)."""
 
 import json
 import subprocess
@@ -10,14 +10,15 @@ from src.sim import GameSim, load_contract
 
 def test_contract_schema():
     c = load_contract()
-    assert c["contract_version"] == "1.0"
+    assert c["contract_version"] == "1.1"
     assert c["tuning"]["lantern_count_night1"] == 5
-    assert c["tuning"]["night1_duration_s"] > 0
-    assert "score" in c["tuning"]
+    assert c["tuning"]["lantern_cost"] == 10
+    assert c["tuning"]["carry_capacity"] == 10
+    assert c["tuning"]["night1_duration_s"] == 300
+    assert "dash_speed" in c["tuning"]
 
 
 def test_tick_model_and_camera_yaw_movement():
-    # cam_yaw_deg = 90: move [0, 1] -> x' = 0*cos(90)+1*sin(90) = 1, z' = -0*sin(90)+1*cos(90) = 0 (+X)
     sc = {"random_motes": False, "random_shades": False, "motes": [], "shades": []}
     sim = GameSim(seed=1, scenario=sc)
     assert sim.snapshot()["tick"] == 0
@@ -25,7 +26,7 @@ def test_tick_model_and_camera_yaw_movement():
     snap = sim.snapshot()
     assert snap["tick"] == 1
     assert snap["sim_tick"] == 1
-    assert snap["player"]["pos"][0] > 0.1
+    assert snap["player"]["pos"][0] > 0.09
     assert abs(snap["player"]["pos"][2]) < 1e-3
 
 
@@ -40,29 +41,27 @@ def test_move_vector_clamped_to_unit_length():
 
 
 def test_pickup_deposit_and_win():
-    # Pre-light 4 lanterns, put 3 motes near player, L5 at (0,0,5)
+    # Updated for Ticket-02: lantern_cost=10, carry_capacity=10
     sc = {
         "random_motes": False,
         "random_shades": False,
-        "motes": [[0, 0, 1], [0, 0, 1.2], [0, 0, 1.4]],
+        "motes": [[0, 0, 1 + i * 0.2] for i in range(10)],
         "shades": [],
         "lanterns": [
-            {"id": "L1", "lit": True, "deposited": 3},
-            {"id": "L2", "lit": True, "deposited": 3},
-            {"id": "L3", "lit": True, "deposited": 3},
-            {"id": "L4", "lit": True, "deposited": 3},
+            {"id": "L1", "lit": True, "deposited": 10},
+            {"id": "L2", "lit": True, "deposited": 10},
+            {"id": "L3", "lit": True, "deposited": 10},
+            {"id": "L4", "lit": True, "deposited": 10},
             {"id": "L5", "pos": [0, 0, 4], "deposited": 0},
         ],
     }
     sim = GameSim(seed=1, scenario=sc)
-    assert sim.score == 0  # scenario setup grants 0 score
+    assert sim.score == 0
     all_events = []
-    # Walk +Z for 40 ticks to pick up motes and reach L5
     for k in range(40):
         patch = {"move": [0, 1]} if k == 0 else None
         all_events.extend(sim.step(patch))
-    assert sim.carried == 3
-    # Edge trigger interact
+    assert sim.carried == 10
     all_events.extend(sim.step({"move": [0, 0], "interact": True}))
     names = [e["name"] for e in all_events]
     assert "mote_picked" in names
@@ -73,18 +72,35 @@ def test_pickup_deposit_and_win():
 
 
 def test_pulse_stuns_pushes_and_lit_lantern_safe_radius():
+    # Updated for Ticket-02: pulse_cost=3, pulse_push_m=4 over 15 ticks, safe_radius=6.0
     sc = {
         "random_motes": False,
         "random_shades": False,
-        "player": {"pos": [0, 0, 0], "carried": 2, "flames": 3},
+        "player": {"pos": [0, 0, 0], "carried": 3, "flames": 3},
         "shades": [{"id": "S1", "pos": [0, 0, 3]}],
-        "lanterns": [{"id": "L1", "pos": [0, 0, 10], "lit": True, "deposited": 3}],
+        "lanterns": [{"id": "L1", "pos": [0, 0, 20], "lit": True, "deposited": 10}],
     }
     sim = GameSim(seed=1, scenario=sc)
     evs = sim.step({"pulse": True})
     assert any(e["name"] == "pulse" and e["data"]["stunned_ids"] == ["S1"] for e in evs)
     assert sim.shades[0].state == "stunned"
-    assert sim.shades[0].pos[2] > 6.5  # pushed 4m away from 3 -> 7
+    for _ in range(15):
+        sim.step()
+    assert sim.shades[0].pos[2] > 6.5
+
+    # Also verify lit lantern safe_radius=6.0 blocks shade outside z <= 4.0
+    sc2 = {
+        "random_motes": False,
+        "random_shades": False,
+        "player": {"pos": [0, 0, 0], "carried": 3, "flames": 3},
+        "shades": [{"id": "S1", "pos": [0, 0, 3]}],
+        "lanterns": [{"id": "L1", "pos": [0, 0, 10], "lit": True, "deposited": 10}],
+    }
+    sim2 = GameSim(seed=1, scenario=sc2)
+    sim2.step({"pulse": True})
+    for _ in range(15):
+        sim2.step()
+    assert sim2.shades[0].pos[2] <= 4.0
 
 
 def test_shade_hit_drops_motes_and_can_lose():

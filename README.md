@@ -1,6 +1,6 @@
-# Đảo Đèn Lồng (Phase 1 — Đêm 1: Đảo Bến)
+# Đảo Đèn Lồng — Ba Hòn Đảo (Phase 2, Contract v1.1)
 
-Game 3D góc nhìn thứ ba chạy trên trình duyệt (Three.js) kèm engine mô phỏng thuần Python 60Hz và chế độ headless tuân theo **Test Contract v1.0**. Chạy được trên **Windows, macOS và Linux** mà không cần cài đặt thêm thư viện đồ họa hay internet.
+Game 3D góc nhìn thứ ba chạy trên trình duyệt (Three.js) kèm engine mô phỏng thuần Python 60Hz và chế độ headless tuân theo **Test Contract v1.1**. Chạy được trên **Windows, macOS và Linux** mà không cần cài thêm thư viện đồ họa hay internet.
 
 ## Cài đặt & Chạy game (tối đa 3 lệnh)
 
@@ -14,30 +14,29 @@ python3 src/server.py
 ## Điều khiển
 - `W A S D` / `Phím mũi tên`: Di chuyển Mây theo hướng camera
 - `Space`: Nhảy
-- `F` / `Enter`: Nạp đom đóm vào Đèn Lồng Lớn gần nhất
-- `Shift` / `K`: Tỏa sáng (Pulse) xua và làm choáng Bóng Mực (tốn `1` đom đóm)
-- `Kéo chuột` hoặc `Q` / `E`: Xoay camera 3D
-- `R`: Chơi lại sau khi thắng / thua
+- `Shift` / `K`: Lướt (Dash `14 m/s`)
+- `E` / `Enter`: Nạp đom đóm vào Đèn Lồng Lớn gần nhất
+- `Q` / `F`: Tỏa sáng (Pulse) xua Bóng Mực & Gió Lạc (tốn `3` đom đóm)
+- `Esc` / `P`: Tạm dừng (Pause)
+- `Kéo chuột`: Xoay camera 3D
 
-## Cách tính điểm
-Các thông số khớp chính xác `game.contract.json`:
-- Nhặt 1 đom đóm: `+10` điểm
-- Làm choáng 1 Bóng Mực bằng Tỏa sáng: `+25` điểm
-- Thắp sáng 1 Đèn Lồng Lớn (`3` đom đóm): `+100` điểm
-- Thưởng khi thắng (thắp đủ 5 đèn): `+2` điểm/giây còn lại + `+50` điểm/ngọn lửa còn lại
+## Cách tính điểm (chuẩn hóa v1.1)
+- Nạp 1 đom đóm vào đèn: `+10` điểm
+- Thắp sáng 1 Đèn Lồng Lớn (`10` đom đóm): `+100` điểm
+- Tỏa Sáng trúng 1 Bóng Mực: `+5` điểm
+- Thưởng khi thắng mỗi Đêm: `+ floor(giây còn lại) × 2 + 50 × Ngọn Lửa còn lại`
 
-## Chạy kiểm thử & chế độ Headless (Test Contract v1.0)
+## Chạy kiểm thử & chế độ Headless (Test Contract v1.1)
 ```bash
 python3 -m pytest -v
-python3 -m src.headless --seed 42 --night 1 --ticks 600 --out out.jsonl
+python3 -m src.headless --seed 42 --night 3 --ticks 21600 --out out.jsonl
 ```
 
 ## Sáng tạo của tôi
-- **Biển mây trôi & Vòng an toàn ánh sáng**: Đảo Bến được bao quanh bởi lớp mây 3D chuyển động chậm; mỗi khi một Đèn Lồng Lớn được thắp, đảo sáng dần lên và hiện vòng tròn vàng biểu thị `safe_radius` (`5.0` m) nơi Bóng Mực không thể xâm nhập.
-- **Âm thanh tổng hợp (Web Audio API)**: Tự tổng hợp tiếng nhặt đom đóm, thắp đèn, tỏa sáng và va chạm ngay trên trình duyệt, không phụ thuộc file âm thanh ngoài.
-- Toàn bộ hiệu ứng thị giác/âm thanh này nằm hoàn toàn ở `web/game.js`, **không** ảnh hưởng tới logic và đầu ra headless của `src/sim.py`.
+- **Âm thanh tổng hợp (Web Audio API)**: Tự tổng hợp hiệu ứng nhặt đom đóm, thắp đèn, tỏa sáng, nhảy, lướt, va chạm và cảnh báo ngay trên trình duyệt, kèm tùy chỉnh âm lượng & độ nhạy chuột lưu vào `localStorage`.
+- Toàn bộ phần hiển thị/âm thanh nằm ở `web/game.js`, không ảnh hưởng đầu ra headless của `src/sim.py`.
 
 ## Bằng chứng & Tài liệu
-- Ghi chép & giả định Phase 1: [docs/notes/phase-1.md](docs/notes/phase-1.md)
-- Bằng chứng kiểm chứng Phase 1: [docs/proof/phase-1-proof.md](docs/proof/phase-1-proof.md)
+- Ghi chép & Acceptance Criteria Phase 2: [docs/notes/phase-2.md](docs/notes/phase-2.md)
+- Bằng chứng kiểm chứng Phase 2: [docs/proof/phase-2-proof.md](docs/proof/phase-2-proof.md)
 - Bản quyền & nguồn: [LICENSE](LICENSE), [CREDITS.md](CREDITS.md)
