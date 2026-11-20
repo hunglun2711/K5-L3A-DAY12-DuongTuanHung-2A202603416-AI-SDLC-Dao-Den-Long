@@ -1,11 +1,10 @@
-/* Đảo Đèn Lồng — Phase 2 (3 Nights, Standard Palette, Dash, Drifters, Charms, Audio, HUD) */
+/* Đảo Đèn Lồng — Phase 2 Enhanced 3D Visuals (Three.js, Standard Palette) */
 (async function () {
   const res = await fetch('/game.contract.json');
   const contract = await res.json();
   const T = contract.tuning;
   const DT = 1 / 60;
 
-  // Saved settings
   const settings = {
     vol: parseFloat(localStorage.getItem('ddl_vol') ?? '0.5'),
     sens: parseFloat(localStorage.getItem('ddl_sens') ?? '0.4'),
@@ -13,7 +12,6 @@
   document.getElementById('optVol').value = settings.vol;
   document.getElementById('optSens').value = settings.sens;
 
-  // Web Audio procedural SFX & ambient
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   let audioCtx = null;
   function sfx(freq, dur, type = 'sine', g0 = 0.12) {
@@ -31,7 +29,6 @@
     } catch (_) {}
   }
 
-  // Build 10 mote HUD slots
   const moteBar = document.getElementById('moteBar');
   for (let i = 0; i < 10; i++) {
     const d = document.createElement('div');
@@ -39,42 +36,104 @@
     moteBar.appendChild(d);
   }
 
-  // Three.js scene with standard palette
+  // Scene & Renderer with ACES Filmic tone mapping
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0E1430);
-  scene.fog = new THREE.FogExp2(0x1B2350, 0.014);
+  scene.fog = new THREE.FogExp2(0x1B2350, 0.011);
 
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 260);
+  const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 300);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
   document.body.appendChild(renderer.domElement);
 
   const ambientLight = new THREE.AmbientLight(0x8FA3B8, 0.15);
   scene.add(ambientLight);
-  const moonLight = new THREE.DirectionalLight(0x9fb8ff, 0.55);
-  moonLight.position.set(20, 40, 15);
+  const hemiLight = new THREE.HemisphereLight(0x4b5d99, 0x12384A, 0.35);
+  scene.add(hemiLight);
+  const moonLight = new THREE.DirectionalLight(0xcbdcff, 0.65);
+  moonLight.position.set(28, 48, 20);
+  moonLight.castShadow = true;
+  moonLight.shadow.mapSize.set(1024, 1024);
+  moonLight.shadow.camera.near = 5;
+  moonLight.shadow.camera.far = 140;
+  const dCam = 55;
+  moonLight.shadow.camera.left = -dCam; moonLight.shadow.camera.right = dCam;
+  moonLight.shadow.camera.top = dCam; moonLight.shadow.camera.bottom = -dCam;
   scene.add(moonLight);
 
-  // Cloud sea floor
+  // Starfield & Moon
+  const starGeo = new THREE.BufferGeometry();
+  const starPos = [];
+  for (let i = 0; i < 450; i++) {
+    const th = Math.random() * Math.PI * 2;
+    const ph = Math.random() * Math.PI * 0.45;
+    const r = 135;
+    starPos.push(r * Math.cos(ph) * Math.cos(th), r * Math.sin(ph) + 10, r * Math.cos(ph) * Math.sin(th));
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xFFF6C2, size: 0.9, transparent: true, opacity: 0.85 })));
+
+  const moonMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(4.5, 20, 20),
+    new THREE.MeshBasicMaterial({ color: 0xFFE9B0 })
+  );
+  moonMesh.position.set(56, 65, -75);
+  scene.add(moonMesh);
+
+  // Cloud Sea + Drifting 3D Cloud Puffs
   const sea = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400),
+    new THREE.PlaneGeometry(500, 500),
     new THREE.MeshBasicMaterial({ color: 0x12384A })
   );
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = -10.5;
   scene.add(sea);
 
-  // Player (Mây: áo #E8E2D0, khăn #C8102E, nón lá)
+  const cloudPuffs = [];
+  const puffGeo = new THREE.SphereGeometry(5.5, 12, 10);
+  const puffMat = new THREE.MeshStandardMaterial({ color: 0x1B2350, roughness: 0.95, transparent: true, opacity: 0.78 });
+  for (let i = 0; i < 28; i++) {
+    const m = new THREE.Mesh(puffGeo, puffMat);
+    const a = (i / 28) * Math.PI * 2;
+    const r = 52 + (i % 4) * 14;
+    m.position.set(Math.cos(a) * r, -6.5 + (i % 3) * 1.4, Math.sin(a) * r);
+    m.scale.set(2.1, 0.48, 1.5);
+    scene.add(m);
+    cloudPuffs.push({ mesh: m, a, r });
+  }
+
+  // Detailed Mây character
   const playerGroup = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.68, 6, 10), new THREE.MeshStandardMaterial({ color: 0xE8E2D0 }));
-  body.position.y = 0.68; playerGroup.add(body);
-  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.07, 6, 12), new THREE.MeshStandardMaterial({ color: 0xC8102E }));
-  scarf.rotation.x = Math.PI / 2; scarf.position.y = 1.18; playerGroup.add(scarf);
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.34, 16), new THREE.MeshStandardMaterial({ color: 0xC9B48A }));
-  hat.position.y = 1.65; playerGroup.add(hat);
-  const pLight = new THREE.PointLight(0xFFB347, 1.8, 12);
-  pLight.position.y = 1.5; playerGroup.add(pLight);
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.95, 14), new THREE.MeshStandardMaterial({ color: 0xE8E2D0, roughness: 0.75 }));
+  robe.position.y = 0.55; robe.castShadow = true; playerGroup.add(robe);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 14), new THREE.MeshStandardMaterial({ color: 0xf7d7c4, roughness: 0.6 }));
+  head.position.y = 1.25; head.castShadow = true; playerGroup.add(head);
+  const eyeMatP = new THREE.MeshBasicMaterial({ color: 0x120A1A });
+  const pe1 = new THREE.Mesh(new THREE.SphereGeometry(0.035), eyeMatP); pe1.position.set(-0.09, 1.27, 0.22);
+  const pe2 = new THREE.Mesh(new THREE.SphereGeometry(0.035), eyeMatP); pe2.position.set(0.09, 1.27, 0.22);
+  playerGroup.add(pe1, pe2);
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.065, 8, 16), new THREE.MeshStandardMaterial({ color: 0xC8102E, roughness: 0.6 }));
+  scarf.rotation.x = Math.PI / 2; scarf.position.y = 1.04; playerGroup.add(scarf);
+  const scarfTail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.45, 0.04), new THREE.MeshStandardMaterial({ color: 0xC8102E }));
+  scarfTail.position.set(0.12, 0.85, -0.24); scarfTail.rotation.x = 0.25; playerGroup.add(scarfTail);
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.66, 0.34, 20), new THREE.MeshStandardMaterial({ color: 0xC9B48A, roughness: 0.7 }));
+  hat.position.y = 1.52; hat.castShadow = true; playerGroup.add(hat);
+  const miniLan = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), new THREE.MeshStandardMaterial({ color: 0xFFE9B0, emissive: 0xFFB347, emissiveIntensity: 1.8 }));
+  miniLan.position.set(0.48, 1.32, 0.22); playerGroup.add(miniLan);
+  const pLight = new THREE.PointLight(0xFFB347, 2.0, 13);
+  pLight.position.set(0, 1.5, 0); playerGroup.add(pLight);
+
+  const pulseWave = new THREE.Mesh(
+    new THREE.RingGeometry(0.6, 0.9, 36),
+    new THREE.MeshBasicMaterial({ color: 0xFFE58A, side: THREE.DoubleSide, transparent: true, opacity: 0 })
+  );
+  pulseWave.rotation.x = -Math.PI / 2; pulseWave.position.y = 0.12;
+  playerGroup.add(pulseWave);
   scene.add(playerGroup);
 
   const worldGroup = new THREE.Group();
@@ -87,12 +146,22 @@
   };
 
   let curNight = 1, totalScore = 0, mode = 'menu', settingsReturn = 'menu';
-  let sim = null;
+  let sim = null, pulseAnim = 0;
   const lanternMeshes = [], moteMeshes = new Map(), shadeMeshes = new Map(), drifterMeshes = new Map(), charmMeshes = new Map();
 
   function polar(r, deg, y = 0) {
     const a = (deg * Math.PI) / 180;
     return [r * Math.cos(a), y, r * Math.sin(a)];
+  }
+
+  function addDecoTree(x, y, z, scale = 1) {
+    const g = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * scale, 0.24 * scale, 1.6 * scale, 7), new THREE.MeshStandardMaterial({ color: 0x6B4A2F }));
+    trunk.position.y = 0.8 * scale; trunk.castShadow = true; g.add(trunk);
+    const crown = new THREE.Mesh(new THREE.ConeGeometry(1.1 * scale, 2.3 * scale, 8), new THREE.MeshStandardMaterial({ color: 0x2F5D50, roughness: 0.85 }));
+    crown.position.y = 2.4 * scale; crown.castShadow = true; g.add(crown);
+    g.position.set(x, y, z);
+    worldGroup.add(g);
   }
 
   function showScreen(id) {
@@ -109,21 +178,30 @@
     while (worldGroup.children.length) worldGroup.remove(worldGroup.children[0]);
     lanternMeshes.length = 0; moteMeshes.clear(); shadeMeshes.clear(); drifterMeshes.clear(); charmMeshes.clear();
 
-    const grassMat = new THREE.MeshStandardMaterial({ color: 0x2F5D50 });
-    const sandMat = new THREE.MeshStandardMaterial({ color: 0xC9B48A });
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x6B4A2F });
+    const grassMat = new THREE.MeshStandardMaterial({ color: 0x2F5D50, roughness: 0.9 });
+    const sandMat = new THREE.MeshStandardMaterial({ color: 0xC9B48A, roughness: 0.88 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x6B4A2F, roughness: 0.85 });
 
     let lanterns = [], motePts = [], shadePts = [], charms = [], jumpPads = [], shadeSpeed = 4.0, shadeInt = 480, maxShades = 6;
     if (night === 1) {
-      const g = new THREE.Mesh(new THREE.CylinderGeometry(40, 38, 2, 48), grassMat); g.position.y = -1; worldGroup.add(g);
+      const g = new THREE.Mesh(new THREE.CylinderGeometry(40, 37, 2.6, 48), grassMat);
+      g.position.y = -1.3; g.receiveShadow = true; worldGroup.add(g);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(39.6, 0.45, 8, 48), sandMat);
+      rim.rotation.x = Math.PI / 2; rim.position.y = -0.05; worldGroup.add(rim);
+      for (let i = 0; i < 10; i++) { const p = polar(35.5, i * 36 + 12); addDecoTree(p[0], 0, p[2], 0.9 + (i % 3) * 0.2); }
       lanterns = [[0,0,25],[23.8,0,7.7],[14.7,0,-20.2],[-14.7,0,-20.2],[-23.8,0,7.7]];
       for (let i = 0; i < 8; i++) motePts.push(polar(12, i * 45));
       for (let i = 0; i < 16; i++) motePts.push(polar(33, i * 22.5));
       for (let i = 0; i < 12; i++) shadePts.push(polar(37, 15 + i * 30));
     } else if (night === 2) {
-      const a = new THREE.Mesh(new THREE.CylinderGeometry(28, 26, 2, 40), grassMat); a.position.y = -1; worldGroup.add(a);
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(28, 26, 2, 40), sandMat); b.position.set(70, -1, 0); worldGroup.add(b);
-      const br = new THREE.Mesh(new THREE.BoxGeometry(18, 0.4, 4), woodMat); br.position.set(35, -0.2, 0); worldGroup.add(br);
+      const a = new THREE.Mesh(new THREE.CylinderGeometry(28, 25.5, 2.6, 40), grassMat); a.position.y = -1.3; a.receiveShadow = true; worldGroup.add(a);
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(28, 25.5, 2.6, 40), sandMat); b.position.set(70, -1.3, 0); b.receiveShadow = true; worldGroup.add(b);
+      const br = new THREE.Mesh(new THREE.BoxGeometry(18, 0.4, 4), woodMat); br.position.set(35, -0.2, 0); br.receiveShadow = true; worldGroup.add(br);
+      for (let x = 27; x <= 43; x += 2) {
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 4.1), woodMat);
+        plank.position.set(x, 0.02, 0); worldGroup.add(plank);
+      }
+      for (let i = 0; i < 6; i++) { const p = polar(24.5, i * 60 + 25); addDecoTree(p[0], 0, p[2], 0.95); }
       lanterns = [[0,0,20],[17,0,-10],[-17,0,-10],[70,0,20],[87,0,-10],[53,0,-10]];
       for (const cx of [0, 70]) {
         for (let i = 0; i < 4; i++) { const p = polar(10, i * 90); motePts.push([p[0]+cx, 0, p[2]]); }
@@ -134,11 +212,21 @@
       jumpPads = [{ pos: [20,0,18], target: [70,0,0], vy: 14, vh: 24 }, { pos: [50,0,-18], target: [0,0,0], vy: 14, vh: 24 }];
       shadeInt = 420; maxShades = 8;
     } else {
-      const t0 = new THREE.Mesh(new THREE.CylinderGeometry(45, 43, 2, 48), grassMat); t0.position.y = -1; worldGroup.add(t0);
+      const t0 = new THREE.Mesh(new THREE.CylinderGeometry(45, 42, 2.6, 48), grassMat); t0.position.y = -1.3; t0.receiveShadow = true; worldGroup.add(t0);
       const t1 = new THREE.Mesh(new THREE.CylinderGeometry(24, 24, 3, 32, 1, false, 0, Math.PI), sandMat);
-      t1.rotation.y = -Math.PI / 2; t1.position.y = 1.5; worldGroup.add(t1);
-      const t2 = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 6, 24), grassMat); t2.position.y = 3; worldGroup.add(t2);
-      const tower = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 8, 16), woodMat); tower.position.y = 10; worldGroup.add(tower);
+      t1.rotation.y = -Math.PI / 2; t1.position.y = 1.5; t1.receiveShadow = true; worldGroup.add(t1);
+      const t2 = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 6, 24), grassMat); t2.position.y = 3; t2.receiveShadow = true; worldGroup.add(t2);
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.2, 8, 16), woodMat); tower.position.y = 10; tower.castShadow = true; worldGroup.add(tower);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(3.2, 2.2, 16), new THREE.MeshStandardMaterial({ color: 0xC8102E })); roof.position.y = 15.1; worldGroup.add(roof);
+      // 2 Ramps at 30 deg & 150 deg
+      for (const deg of [30, 150]) {
+        const rad = (deg * Math.PI) / 180;
+        const ramp = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.4, 3.0), woodMat);
+        ramp.position.set(27 * Math.cos(rad), 1.45, 27 * Math.sin(rad));
+        ramp.rotation.y = -rad;
+        ramp.rotation.z = Math.atan2(3, 6);
+        worldGroup.add(ramp);
+      }
       lanterns = [[0,6,6],[18,3,10],[-18,3,10],[35,0,-10],[-35,0,-10],[20,0,-35],[-20,0,-35]];
       for (let i = 0; i < 18; i++) motePts.push(polar(34, i * 20, 0));
       for (let i = 0; i < 8; i++) motePts.push(polar(18, 20 + i * 20, 3));
@@ -150,8 +238,8 @@
     }
 
     for (const jp of jumpPads) {
-      const pad = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.2, 16), new THREE.MeshBasicMaterial({ color: 0xF2C14E }));
-      pad.position.set(jp.pos[0], jp.pos[1] + 0.1, jp.pos[2]);
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.15, 0.25, 20), new THREE.MeshStandardMaterial({ color: 0xF2C14E, emissive: 0xFFB347, emissiveIntensity: 0.6 }));
+      pad.position.set(jp.pos[0], jp.pos[1] + 0.12, jp.pos[2]);
       worldGroup.add(pad);
     }
 
@@ -165,55 +253,69 @@
       windActive: false, windDir: 0, windTimer: 1800,
     };
 
+    // Detailed Great Lanterns
     sim.lanterns.forEach((l) => {
       const g = new THREE.Group(); g.position.set(l.pos[0], l.pos[1], l.pos[2]);
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.32, 3, 10), woodMat); post.position.y = 1.5; g.add(post);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.9), new THREE.MeshStandardMaterial({ color: 0x5B5F6E })); head.position.y = 3.4; g.add(head);
-      const light = new THREE.PointLight(0xFFB347, 0, 18); light.position.y = 3.4; g.add(light);
-      const ring = new THREE.Mesh(new THREE.RingGeometry(T.safe_radius - 0.1, T.safe_radius, 36), new THREE.MeshBasicMaterial({ color: 0xF2C14E, side: THREE.DoubleSide, transparent: true, opacity: 0 }));
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.68, 0.45, 8), woodMat); base.position.y = 0.22; g.add(base);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 2.7, 10), woodMat); post.position.y = 1.65; post.castShadow = true; g.add(post);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.86, 1.05, 0.86), new THREE.MeshStandardMaterial({ color: 0x5B5F6E, roughness: 0.5 }));
+      head.position.y = 3.35; head.castShadow = true; g.add(head);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.55, 4), woodMat);
+      roof.position.y = 4.15; roof.rotation.y = Math.PI / 4; g.add(roof);
+      const light = new THREE.PointLight(0xFFB347, 0, 22); light.position.y = 3.35; g.add(light);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(T.safe_radius - 0.14, T.safe_radius, 48), new THREE.MeshBasicMaterial({ color: 0xF2C14E, side: THREE.DoubleSide, transparent: true, opacity: 0 }));
       ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; g.add(ring);
       worldGroup.add(g);
       lanternMeshes.push({ head, light, ring });
     });
 
     for (const c of sim.charms) {
-      const cm = new THREE.Mesh(new THREE.OctahedronGeometry(0.4), new THREE.MeshStandardMaterial({ color: 0xC8102E, emissive: 0xF2C14E, emissiveIntensity: 0.7 }));
-      cm.position.set(c.pos[0], c.pos[1] + 0.9, c.pos[2]);
+      const cm = new THREE.Mesh(new THREE.OctahedronGeometry(0.42), new THREE.MeshStandardMaterial({ color: 0xC8102E, emissive: 0xF2C14E, emissiveIntensity: 0.85 }));
+      cm.position.set(c.pos[0], c.pos[1] + 0.95, c.pos[2]);
       worldGroup.add(cm); charmMeshes.set(c.id, cm);
     }
 
     const shuffled = [...motePts].sort(() => Math.random() - 0.5).slice(0, 20);
     shuffled.forEach((p, idx) => addMote(p, idx));
     ambientLight.intensity = 0.15;
+    queuedJump = queuedInt = queuedPulse = queuedDash = false;
     showScreen(null);
     mode = 'playing';
   }
 
   let mSeq = 0, sSeq = 0, dSeq = 0;
-  function addMote(pos, _i) {
+  function addMote(pos) {
     const id = `M${++mSeq}`;
     sim.motes.push({ id, pos: [...pos] });
-    const m = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), new THREE.MeshStandardMaterial({ color: 0xFFF6C2, emissive: 0xFFE58A, emissiveIntensity: 1.6 }));
-    m.position.set(pos[0], pos[1] + 0.8, pos[2]);
-    worldGroup.add(m); moteMeshes.set(id, m);
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10), new THREE.MeshStandardMaterial({ color: 0xFFF6C2, emissive: 0xFFE58A, emissiveIntensity: 2.0 }));
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 10), new THREE.MeshBasicMaterial({ color: 0xFFE58A, transparent: true, opacity: 0.28 }));
+    g.add(core, halo);
+    g.position.set(pos[0], pos[1] + 0.85, pos[2]);
+    worldGroup.add(g); moteMeshes.set(id, g);
   }
   function addShade(pos) {
     const id = `S${++sSeq}`;
     sim.shades.push({ id, pos: [...pos], state: 'chase', timer: 0 });
-    const body = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.5, 10), new THREE.MeshStandardMaterial({ color: 0x120A1A, emissive: 0x7A3CFF, emissiveIntensity: 0.6 }));
-    body.position.set(pos[0], pos[1] + 0.8, pos[2]);
-    worldGroup.add(body); shadeMeshes.set(id, body);
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.55, 12), new THREE.MeshStandardMaterial({ color: 0x120A1A, emissive: 0x7A3CFF, emissiveIntensity: 0.65 }));
+    body.position.y = 0.8; body.castShadow = true; g.add(body);
+    const eMat = new THREE.MeshBasicMaterial({ color: 0x7A3CFF });
+    const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eMat); e1.position.set(-0.14, 1.05, 0.34);
+    const e2 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eMat); e2.position.set(0.14, 1.05, 0.34);
+    g.add(e1, e2);
+    g.position.set(pos[0], pos[1], pos[2]);
+    worldGroup.add(g); shadeMeshes.set(id, { group: g, body });
     sfx(180, 0.25, 'sawtooth', 0.09);
   }
   function addDrifter(pos) {
     const id = `D${++dSeq}`;
     sim.drifters.push({ id, pos: [...pos], state: 'idle', stolen: 0, timer: 0, hasStolen: false });
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.3, 1.2), new THREE.MeshStandardMaterial({ color: 0x8FA3B8, emissive: 0x8FA3B8, emissiveIntensity: 0.4 }));
-    m.position.set(pos[0], pos[1] + 1.2, pos[2]);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.16, 1.4), new THREE.MeshStandardMaterial({ color: 0x8FA3B8, emissive: 0x8FA3B8, emissiveIntensity: 0.45 }));
+    m.position.set(pos[0], pos[1] + 1.3, pos[2]);
     worldGroup.add(m); drifterMeshes.set(id, m);
   }
 
-  // Input & UI events
   const keys = {};
   let camYaw = 0, dragging = false, lastX = 0;
   let queuedJump = false, queuedInt = false, queuedPulse = false, queuedDash = false;
@@ -358,9 +460,7 @@
     if (nearL) {
       promptEl.textContent = p.carried > 0 ? `E — Nạp ánh sáng (${nearL.deposited}/10)` : `Đứng gần đèn (${nearL.deposited}/10) — Hãy nhặt thêm đom đóm`;
       promptEl.style.display = 'block';
-    } else {
-      promptEl.style.display = 'none';
-    }
+    } else promptEl.style.display = 'none';
 
     const doInt = queuedInt; queuedInt = false;
     if (doInt && nearL && p.carried > 0) {
@@ -379,7 +479,7 @@
 
     const doPulse = queuedPulse; queuedPulse = false;
     if (doPulse && p.pulseCd === 0 && p.carried >= T.pulse_cost) {
-      p.carried -= T.pulse_cost; p.pulseCd = 180; sfx(440, 0.3, 'sine', 0.12);
+      p.carried -= T.pulse_cost; p.pulseCd = 180; pulseAnim = 1.0; sfx(440, 0.3, 'sine', 0.12);
       for (const s of sim.shades) {
         if (Math.hypot(p.pos[0] - s.pos[0], p.pos[2] - s.pos[2]) <= T.pulse_radius) {
           s.state = 'stunned'; s.timer = 120; sim.score += 5;
@@ -453,22 +553,50 @@
   }
 
   function syncVisuals(now) {
+    for (const cp of cloudPuffs) {
+      cp.a += 0.00025;
+      cp.mesh.position.x = Math.cos(cp.a) * cp.r;
+      cp.mesh.position.z = Math.sin(cp.a) * cp.r;
+    }
     if (!sim) return;
     playerGroup.position.set(sim.player.pos[0], sim.player.pos[1], sim.player.pos[2]);
     playerGroup.visible = sim.player.invuln === 0 || Math.floor(now / 80) % 2 === 0;
+    miniLan.position.x = 0.48 + Math.sin(now * 0.005) * 0.04;
+
+    if (pulseAnim > 0) {
+      pulseAnim = Math.max(0, pulseAnim - 0.04);
+      const sc = 1 + (1 - pulseAnim) * T.pulse_radius * 1.4;
+      pulseWave.scale.set(sc, sc, 1);
+      pulseWave.material.opacity = pulseAnim * 0.75;
+    } else pulseWave.material.opacity = 0;
+
     sim.lanterns.forEach((l, i) => {
       const lm = lanternMeshes[i];
-      if (l.lit) { lm.head.material.color.setHex(0xFFB347); lm.head.material.emissive.setHex(0xFFE9B0); lm.head.material.emissiveIntensity = 1.4; lm.light.intensity = 3; lm.ring.material.opacity = 0.35; }
+      if (l.lit) {
+        lm.head.material.color.setHex(0xFFB347); lm.head.material.emissive.setHex(0xFFE9B0);
+        lm.head.material.emissiveIntensity = 1.5; lm.light.intensity = 3.4; lm.ring.material.opacity = 0.35;
+      } else if (l.deposited > 0) {
+        lm.head.material.emissive.setHex(0xFFB347);
+        lm.head.material.emissiveIntensity = 0.55 * (l.deposited / 10);
+        lm.light.intensity = 0.6;
+      }
     });
-    for (const m of sim.motes) { const mm = moteMeshes.get(m.id); if (mm) mm.position.y = m.pos[1] + 0.8 + Math.sin(now * 0.004 + m.pos[0]) * 0.2; }
-    for (const s of sim.shades) { const sm = shadeMeshes.get(s.id); if (sm) { sm.position.set(s.pos[0], s.pos[1] + 0.8, s.pos[2]); sm.material.color.setHex(s.state === 'stunned' ? 0x3A3450 : 0x120A1A); } }
-    for (const d of sim.drifters) { const dm = drifterMeshes.get(d.id); if (dm) { dm.visible = d.state !== 'removed'; dm.position.set(d.pos[0], d.pos[1] + 1.2, d.pos[2]); } }
+    for (const m of sim.motes) { const mm = moteMeshes.get(m.id); if (mm) mm.position.y = m.pos[1] + 0.85 + Math.sin(now * 0.0045 + m.pos[0]) * 0.24; }
+    for (const s of sim.shades) {
+      const sm = shadeMeshes.get(s.id);
+      if (sm) {
+        sm.group.position.set(s.pos[0], s.pos[1], s.pos[2]);
+        sm.body.material.color.setHex(s.state === 'stunned' ? 0x3A3450 : 0x120A1A);
+        sm.group.rotation.y += s.state === 'stunned' ? 0.18 : 0.04;
+      }
+    }
+    for (const d of sim.drifters) { const dm = drifterMeshes.get(d.id); if (dm) { dm.visible = d.state !== 'removed'; dm.position.set(d.pos[0], d.pos[1] + 1.3 + Math.sin(now * 0.006) * 0.15, d.pos[2]); } }
+    for (const c of sim.charms) { const cm = charmMeshes.get(c.id); if (cm && c.available) { cm.rotation.y += 0.03; cm.position.y = c.pos[1] + 0.95 + Math.sin(now * 0.004) * 0.15; } }
 
     const th = (camYaw * Math.PI) / 180;
-    camera.position.set(sim.player.pos[0] + Math.sin(th) * 9, sim.player.pos[1] + 5.5, sim.player.pos[2] + Math.cos(th) * 9);
+    camera.position.set(sim.player.pos[0] + Math.sin(th) * 9.5, sim.player.pos[1] + 5.6, sim.player.pos[2] + Math.cos(th) * 9.5);
     camera.lookAt(sim.player.pos[0], sim.player.pos[1] + 1.2, sim.player.pos[2]);
 
-    // HUD updates
     document.getElementById('hudFlames').textContent = sim.player.flames;
     document.getElementById('hudCharm').textContent = sim.player.charmT > 0 ? `🪶 Bùa ${Math.ceil(sim.player.charmT / 60)}s` : '';
     const secs = Math.ceil(sim.timeLeft);
