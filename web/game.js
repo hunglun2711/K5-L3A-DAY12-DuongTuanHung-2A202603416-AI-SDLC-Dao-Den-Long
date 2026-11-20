@@ -148,6 +148,7 @@
   let curNight = 1, totalScore = 0, mode = 'menu', settingsReturn = 'menu';
   let sim = null, pulseAnim = 0;
   const lanternMeshes = [], moteMeshes = new Map(), shadeMeshes = new Map(), drifterMeshes = new Map(), charmMeshes = new Map();
+  let obstacles = [];
 
   function polar(r, deg, y = 0) {
     const a = (deg * Math.PI) / 180;
@@ -162,6 +163,7 @@
     crown.position.y = 2.4 * scale; crown.castShadow = true; g.add(crown);
     g.position.set(x, y, z);
     worldGroup.add(g);
+    obstacles.push({ x, y, z, r: 0.65 * scale, h: 3.5 * scale });
   }
 
   function showScreen(id) {
@@ -177,6 +179,7 @@
   function buildNight(night) {
     while (worldGroup.children.length) worldGroup.remove(worldGroup.children[0]);
     lanternMeshes.length = 0; moteMeshes.clear(); shadeMeshes.clear(); drifterMeshes.clear(); charmMeshes.clear();
+    obstacles = [];
 
     const grassMat = new THREE.MeshStandardMaterial({ color: 0x2F5D50, roughness: 0.9 });
     const sandMat = new THREE.MeshStandardMaterial({ color: 0xC9B48A, roughness: 0.88 });
@@ -227,7 +230,9 @@
         const pp = polar(6.2, a, 0);
         const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 6, 10), woodMat);
         pil.position.set(pp[0], 3, pp[2]); worldGroup.add(pil);
+        obstacles.push({ x: pp[0], y: 0, z: pp[2], r: 0.85, h: 6.0 });
       }
+      obstacles.push({ x: 0, y: 5.5, z: 0, r: 2.45, h: 9.0 }); // Bell tower
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.2, 8, 16), woodMat); tower.position.y = 10; tower.castShadow = true; worldGroup.add(tower);
       const roof = new THREE.Mesh(new THREE.ConeGeometry(3.2, 2.2, 16), new THREE.MeshStandardMaterial({ color: 0xC8102E })); roof.position.y = 15.1; worldGroup.add(roof);
       // 2 Ramps at 30 deg & 150 deg (r=30 Y=0 -> r=24 Y=3)
@@ -280,6 +285,7 @@
       ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; g.add(ring);
       worldGroup.add(g);
       lanternMeshes.push({ head, light, ring });
+      obstacles.push({ x: l.pos[0], y: l.pos[1], z: l.pos[2], r: 0.82, h: 4.5 });
     });
 
     for (const c of sim.charms) {
@@ -446,6 +452,17 @@
       if (nr >= 12 && nr <= 24 && nz > 0 && p.pos[1] > 0.5 && p.pos[1] < 2.65) blocked = true; // Tier 1 cliff
     }
     if (!blocked) { p.pos[0] = nx; p.pos[2] = nz; }
+    for (const ob of obstacles) {
+      if (p.pos[1] >= ob.y - 0.5 && p.pos[1] <= ob.y + ob.h) {
+        const dx = p.pos[0] - ob.x, dz = p.pos[2] - ob.z;
+        const d = Math.hypot(dx, dz);
+        if (d < ob.r) {
+          const ux = d > 1e-4 ? dx / d : 1, uz = d > 1e-4 ? dz / d : 0;
+          p.pos[0] = ob.x + ux * ob.r;
+          p.pos[2] = ob.z + uz * ob.r;
+        }
+      }
+    }
     p.vel[0] = vx; p.vel[2] = vz;
 
     const doJump = queuedJump; queuedJump = false;
