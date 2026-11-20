@@ -364,13 +364,18 @@
     sim.shades.push({ id, pos: [...pos], state: 'wander', timer: 0, targetId: null });
     const g = new THREE.Group();
     const eyeHex = settings.cb ? 0x00B3FF : 0x7A3CFF;
-    const body = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.55, 10), new THREE.MeshStandardMaterial({ color: 0x120A1A, emissive: eyeHex, emissiveIntensity: 0.65 }));
-    body.position.y = 0.8; g.add(body);
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.65, 1.75, 12), new THREE.MeshStandardMaterial({ color: 0x120A1A, emissive: eyeHex, emissiveIntensity: 0.95 }));
+    body.position.y = 0.9; g.add(body);
+    const aura = new THREE.Mesh(
+      new THREE.TorusGeometry(0.7, 0.06, 8, 20),
+      new THREE.MeshBasicMaterial({ color: eyeHex, transparent: true, opacity: 0.85 })
+    );
+    aura.rotation.x = Math.PI / 2; aura.position.y = 0.12; g.add(aura);
     const eMat = new THREE.MeshBasicMaterial({ color: eyeHex });
-    const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eMat); e1.position.set(-0.14, 1.05, 0.34);
-    const e2 = new THREE.Mesh(new THREE.SphereGeometry(0.08), eMat); e2.position.set(0.14, 1.05, 0.34);
+    const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.13), eMat); e1.position.set(-0.18, 1.2, 0.4);
+    const e2 = new THREE.Mesh(new THREE.SphereGeometry(0.13), eMat); e2.position.set(0.18, 1.2, 0.4);
     g.add(e1, e2); g.position.set(pos[0], pos[1], pos[2]);
-    worldGroup.add(g); shadeMeshes.set(id, { group: g, body, eMat });
+    worldGroup.add(g); shadeMeshes.set(id, { group: g, body, eMat, aura });
     lastShadePos = [...pos];
     if (!isBench) { sfx(180, 0.25, 'sawtooth', 0.09); showCaption('👻 Bóng Mực vừa xuất hiện!', 150); }
   }
@@ -825,6 +830,7 @@
         sm.group.position.set(s.pos[0], s.pos[1], s.pos[2]);
         sm.body.material.color.setHex(s.state === 'stunned' ? 0x3A3450 : 0x120A1A);
         sm.body.material.emissive.setHex(eyeHex); sm.eMat.color.setHex(eyeHex);
+        if (sm.aura) sm.aura.material.color.setHex(eyeHex);
         sm.group.rotation.y += s.state === 'stunned' ? 0.18 : 0.04;
       }
     }
