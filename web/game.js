@@ -713,7 +713,7 @@
         const ldx = s.pos[0] - l.pos[0], ldz = s.pos[2] - l.pos[2], ld = Math.hypot(ldx, ldz) || 1;
         if (ld < T.safe_radius) { s.pos[0] = l.pos[0] + (ldx / ld) * (T.safe_radius + 0.05); s.pos[2] = l.pos[2] + (ldz / ld) * (T.safe_radius + 0.05); }
       }
-      if (p.invuln === 0 && Math.hypot(p.pos[0] - s.pos[0], p.pos[2] - s.pos[2]) <= 1) {
+      if (p.invuln === 0 && Math.hypot(p.pos[0] - s.pos[0], p.pos[2] - s.pos[2]) <= 1 && Math.abs(p.pos[1] - s.pos[1]) <= 1.5) {
         p.flames--; p.carried -= Math.floor(p.carried / 2); p.invuln = 90; sfx(110, 0.3, 'sawtooth', 0.14);
         if (p.flames <= 0) return finishNight(false, 'Mây đã tắt hết Ngọn Lửa trước Bóng Mực.');
       }
