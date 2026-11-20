@@ -3,16 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Đảo Đèn Lồng — Ba Hòn Đảo</title>
+  <title>Đảo Đèn Lồng — Bình Minh v1.0.0</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { overflow: hidden; background: #0E1430; font-family: system-ui, -apple-system, sans-serif; color: #F5F1E6; }
+    html { font-size: 18px; }
+    body.large-text { font-size: 22.5px; }
+    body.large-text .panel, body.large-text button, body.large-text .screen p { font-size: 1.15em; }
+    body { overflow: hidden; background: #0E1430; font-family: system-ui, -apple-system, sans-serif; color: #F5F1E6; font-size: 18px; }
     .panel {
-      background: rgba(14, 20, 48, 0.82);
+      background: rgba(14, 20, 48, 0.85);
       border: 1px solid rgba(242, 193, 78, 0.45);
       border-radius: 12px; padding: 10px 16px;
       backdrop-filter: blur(6px);
       box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+      font-size: 18px;
     }
     #hud {
       position: fixed; top: 14px; left: 14px; right: 14px;
@@ -21,6 +25,7 @@
     }
     .gold { color: #F2C14E; font-weight: 700; }
     #hudTime.danger { color: #FF5A5F; animation: blink 0.8s infinite; }
+    body.reduced-motion #hudTime.danger { animation: none; }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
     #moteBar {
       position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
@@ -33,62 +38,70 @@
     .mote-slot.filled { background: #FFF6C2; box-shadow: 0 0 8px #FFE58A; }
     #cdBox {
       position: fixed; bottom: 18px; right: 18px;
-      display: none; gap: 10px; z-index: 10; pointer-events: none; font-size: 13px;
+      display: none; gap: 10px; z-index: 10; pointer-events: none; font-size: 18px;
     }
-    .cd-pill { padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(242,193,78,0.45); background: rgba(14,20,48,0.82); }
+    .cd-pill { padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(242,193,78,0.45); background: rgba(14,20,48,0.85); }
     #prompt {
-      position: fixed; bottom: 72px; left: 50%; transform: translateX(-50%);
-      background: #FFB347; color: #0E1430; font-weight: 700; font-size: 14px;
+      position: fixed; bottom: 76px; left: 50%; transform: translateX(-50%);
+      background: #FFB347; color: #0E1430; font-weight: 700; font-size: 18px;
       padding: 7px 16px; border-radius: 999px; display: none; z-index: 10;
     }
-    #windWarn {
-      position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
-      background: rgba(143, 163, 184, 0.9); color: #0E1430; font-weight: 700;
-      padding: 6px 14px; border-radius: 8px; display: none; z-index: 10;
+    #captionBox {
+      position: fixed; top: 76px; left: 50%; transform: translateX(-50%);
+      background: rgba(14, 20, 48, 0.92); border: 1px solid #F2C14E;
+      color: #F5F1E6; font-weight: 700; font-size: 18px;
+      padding: 6px 16px; border-radius: 8px; display: none; z-index: 11;
     }
-    #arrow {
+    #shadeArrow {
       position: fixed; top: 50%; left: 50%; width: 0; height: 0;
-      border-left: 10px solid transparent; border-right: 10px solid transparent;
-      border-bottom: 18px solid #F2C14E; display: none; z-index: 9; pointer-events: none;
+      border-left: 12px solid transparent; border-right: 12px solid transparent;
+      border-bottom: 22px solid #7A3CFF; display: none; z-index: 11; pointer-events: none;
     }
     .screen {
-      position: fixed; inset: 0; background: rgba(14, 20, 48, 0.92);
+      position: fixed; inset: 0; background: rgba(14, 20, 48, 0.93);
       display: none; flex-direction: column; align-items: center; justify-content: center;
-      gap: 16px; z-index: 30; text-align: center; padding: 24px;
+      gap: 14px; z-index: 30; text-align: center; padding: 24px; overflow-y: auto;
     }
     .screen h1 { font-size: 38px; color: #F2C14E; }
-    .screen p { max-width: 520px; line-height: 1.6; font-size: 16px; }
+    .screen p { max-width: 560px; line-height: 1.5; font-size: 18px; }
     .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
     button {
       background: linear-gradient(135deg, #FFB347, #F2C14E); color: #0E1430;
-      border: none; border-radius: 10px; padding: 11px 22px; font-size: 15px; font-weight: 700; cursor: pointer;
+      border: none; border-radius: 10px; padding: 10px 20px; font-size: 18px; font-weight: 700; cursor: pointer;
     }
     button.sec { background: #1B2350; color: #F5F1E6; border: 1px solid #F2C14E; }
-    .slider-row { display: flex; gap: 12px; align-items: center; width: 300px; justify-content: space-between; }
+    .slider-row { display: flex; gap: 12px; align-items: center; width: 380px; justify-content: space-between; font-size: 18px; }
+    .bind-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; max-width: 640px; }
+    .bind-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 18px; }
+    .bind-btn { padding: 5px 12px; min-width: 96px; font-size: 16px; }
+    table { border-collapse: collapse; min-width: 520px; font-size: 18px; }
+    th, td { border-bottom: 1px solid rgba(242,193,78,0.3); padding: 8px 12px; text-align: left; }
+    input[type="text"] { padding: 8px 12px; font-size: 18px; border-radius: 8px; border: 1px solid #F2C14E; background: #1B2350; color: #F5F1E6; }
   </style>
 </head>
 <body>
   <div id="hud">
-    <div class="panel">🔥 Ngọn lửa: <span id="hudFlames" class="gold">3</span> &nbsp;|&nbsp; ✨ <span id="hudCarried" class="gold">0/10</span> &nbsp;|&nbsp; <span id="hudCharm"></span></div>
+    <div class="panel">🔥 <span id="hudFlames" class="gold">3</span> &nbsp;|&nbsp; ✨ <span id="hudCarried" class="gold">0/10</span> &nbsp;|&nbsp; <span id="hudCharm"></span></div>
     <div class="panel">⏳ <span id="hudTime" class="gold">04:00</span></div>
-    <div class="panel">🏮 Đèn: <span id="hudLanterns" class="gold">0 / 5</span> &nbsp;|&nbsp; ⭐ <span id="hudScore" class="gold">0</span></div>
+    <div class="panel">🏮 <span id="hudLanterns" class="gold">0 / 5</span> &nbsp;|&nbsp; ⭐ <span id="hudScore" class="gold">0</span></div>
   </div>
-  <div id="windWarn">🍃 Gió mạnh sắp thổi!</div>
+  <div id="captionBox"></div>
+  <div id="shadeArrow"></div>
   <div id="prompt">E — Nạp ánh sáng (0/10)</div>
-  <div id="arrow"></div>
   <div id="moteBar" class="panel"></div>
   <div id="cdBox">
-    <div class="cd-pill">Lướt [Shift/K]: <span id="cdDash" class="gold">Sẵn sàng</span></div>
-    <div class="cd-pill">Tỏa Sáng [Q/F]: <span id="cdPulse" class="gold">Sẵn sàng</span></div>
+    <div class="cd-pill">Lướt: <span id="cdDash" class="gold">Sẵn sàng</span></div>
+    <div class="cd-pill">Tỏa Sáng: <span id="cdPulse" class="gold">Sẵn sàng</span></div>
   </div>
 
   <div id="menuScreen" class="screen" style="display:flex;">
     <h1>Đảo Đèn Lồng</h1>
-    <p>Ba Hòn Đảo — Cùng Mây thắp lại Đảo Bến, Đảo Cau và Đảo Chuông trước khi bình minh lên.</p>
+    <p>Ba Hòn Đảo — Giữ ánh sáng bùng cháy tới bình minh trên Đảo Bến, Đảo Cau và Đảo Chuông.</p>
     <div class="btn-row">
       <button id="btnStart">Bắt đầu hành trình (Đêm 1)</button>
       <button id="btnNight2" class="sec">Đêm 2 — Đảo Cau</button>
       <button id="btnNight3" class="sec">Đêm 3 — Đảo Chuông</button>
+      <button id="btnLeaderboard" class="sec">Bảng xếp hạng</button>
       <button id="btnSettings" class="sec">Cài đặt</button>
     </div>
   </div>
@@ -102,7 +115,7 @@
   <div id="pauseScreen" class="screen">
     <h1>Tạm dừng</h1>
     <div class="btn-row">
-      <button id="btnResume">Tiếp tục (Esc)</button>
+      <button id="btnResume">Tiếp tục</button>
       <button id="btnRestartNight" class="sec">Chơi lại Đêm</button>
       <button id="btnPauseSettings" class="sec">Cài đặt</button>
       <button id="btnToMenu" class="sec">Về Menu</button>
@@ -110,16 +123,37 @@
   </div>
 
   <div id="settingsScreen" class="screen">
-    <h1>Cài đặt</h1>
+    <h1>Cài đặt & Dễ tiếp cận</h1>
     <div class="slider-row"><span>Âm lượng</span><input id="optVol" type="range" min="0" max="1" step="0.05" /></div>
     <div class="slider-row"><span>Độ nhạy chuột</span><input id="optSens" type="range" min="0.1" max="1.2" step="0.05" /></div>
     <div class="slider-row"><span>Bảng màu dễ phân biệt</span><input id="optCb" type="checkbox" /></div>
-    <button id="btnCloseSettings">Lưu & Quay lại</button>
+    <div class="slider-row"><span>Giảm chuyển động</span><input id="optMotion" type="checkbox" /></div>
+    <div class="slider-row"><span>Chữ lớn (×1.25)</span><input id="optLarge" type="checkbox" /></div>
+    <div id="bindWarn" style="color:#FF5A5F; font-size:18px; min-height:24px;"></div>
+    <div id="bindGrid" class="bind-grid"></div>
+    <div class="btn-row">
+      <button id="btnResetBinds" class="sec">Khôi phục mặc định</button>
+      <button id="btnCloseSettings">Lưu & Quay lại</button>
+    </div>
+  </div>
+
+  <div id="lbScreen" class="screen">
+    <h1>Bảng xếp hạng (Top 10)</h1>
+    <table>
+      <thead><tr><th>#</th><th>Tên</th><th>Điểm</th><th>Đêm thắng</th><th>Thời gian</th></tr></thead>
+      <tbody id="lbBody"></tbody>
+    </table>
+    <button id="btnCloseLb">Quay lại</button>
   </div>
 
   <div id="resultScreen" class="screen">
     <h1 id="resTitle">Kết quả</h1>
     <p id="resDesc"></p>
+    <div id="saveScoreBox" class="btn-row" style="display:none;">
+      <input id="lbNameInput" type="text" maxlength="12" placeholder="Tên (3-12 ký tự)" />
+      <button id="btnSaveScore">Lưu điểm</button>
+    </div>
+    <div id="saveMsg" style="font-size:18px; color:#F2C14E;"></div>
     <div class="btn-row">
       <button id="btnNextOrRetry">Tiếp tục</button>
       <button id="btnReplayThis" class="sec">Chơi lại Đêm này</button>

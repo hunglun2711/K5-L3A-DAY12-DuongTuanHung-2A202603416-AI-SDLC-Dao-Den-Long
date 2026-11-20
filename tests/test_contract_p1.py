@@ -10,7 +10,7 @@ from src.sim import GameSim, load_contract
 
 def test_contract_schema():
     c = load_contract()
-    assert c["contract_version"] == "1.2"
+    assert c["contract_version"] == "1.3"
     assert c["tuning"]["lantern_count_night1"] == 5
     assert c["tuning"]["lantern_cost"] == 10
     assert c["tuning"]["carry_capacity"] == 10
