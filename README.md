@@ -1,6 +1,6 @@
 # Đảo Đèn Lồng — Bình Minh (v1.0.0, Contract v1.3)
 
-> **Video demo:** Xem tại [GitHub Release v1.0.0](https://github.com/hunglun2711/K5-L3A-DAY12-DuongTuanHung-2A202603416-AI-SDLC-Dao-Den-Long/releases/tag/v1.0.0) (hoặc `docs/demo/demo.mp4`).
+> **Video demo:** Xem trực tiếp tại [docs/demo/demo.mp4](docs/demo/demo.mp4) (hoặc tải tại [GitHub Release v1.0.0](https://github.com/hunglun2711/K5-L3A-DAY12-DuongTuanHung-2A202603416-AI-SDLC-Dao-Den-Long/releases/tag/v1.0.0)).
 
 Game 3D góc nhìn thứ ba chạy trên trình duyệt (Three.js) kèm engine mô phỏng thuần Python 60Hz tuân theo **Test Contract v1.3**. Chạy được trên **Windows, macOS và Linux**.
 
