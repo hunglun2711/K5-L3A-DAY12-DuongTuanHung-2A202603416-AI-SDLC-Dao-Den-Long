@@ -28,6 +28,10 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
             self.path = "/index.html"
         super().do_GET()
 
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def log_message(self, format: str, *args: object) -> None:
         pass
 

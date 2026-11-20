@@ -215,9 +215,16 @@
 
   // Input & UI events
   const keys = {};
-  let camYaw = 0, dragging = false, lastX = 0, prevJump = false, prevInt = false, prevPulse = false, prevDash = false;
+  let camYaw = 0, dragging = false, lastX = 0;
+  let queuedJump = false, queuedInt = false, queuedPulse = false, queuedDash = false;
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
+    if (!e.repeat && mode === 'playing') {
+      if (e.code === 'Space') queuedJump = true;
+      if (e.code === 'KeyE' || e.code === 'Enter') queuedInt = true;
+      if (e.code === 'KeyQ' || e.code === 'KeyF') queuedPulse = true;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'KeyK') queuedDash = true;
+    }
     if ((e.code === 'Escape' || e.code === 'KeyP') && (mode === 'playing' || mode === 'paused')) {
       mode = mode === 'playing' ? 'paused' : 'playing';
       showScreen(mode === 'paused' ? 'pauseScreen' : null);
@@ -294,21 +301,19 @@
     if (mag > 1) { wx /= mag; wz /= mag; }
     if (mag > 0.05) { p.facing = [wx / (mag || 1), wz / (mag || 1)]; playerGroup.rotation.y = Math.atan2(wx, wz); }
 
-    const dashNow = !!(keys['ShiftLeft'] || keys['ShiftRight'] || keys['KeyK']);
-    if (dashNow && !prevDash && p.dashT === 0 && (p.dashCd === 0 || p.charmT > 0)) {
+    const doDash = queuedDash; queuedDash = false;
+    if (doDash && p.dashT === 0 && (p.dashCd === 0 || p.charmT > 0)) {
       p.dashT = 12; p.dashCd = p.charmT > 0 ? 0 : 90; p.dashDir = [...p.facing];
       sfx(500, 0.14, 'triangle', 0.1);
     }
-    prevDash = dashNow;
 
     let vx = p.dashT > 0 ? p.dashDir[0] * T.dash_speed : (p.launched ? p.vel[0] : wx * (p.charmT > 0 ? 7.2 : T.player_speed));
     let vz = p.dashT > 0 ? p.dashDir[1] * T.dash_speed : (p.launched ? p.vel[2] : wz * (p.charmT > 0 ? 7.2 : T.player_speed));
     if (sim.windActive) { const wr = (sim.windDir * Math.PI) / 180; vx += 2 * Math.cos(wr); vz += 2 * Math.sin(wr); }
     p.pos[0] += vx * DT; p.pos[2] += vz * DT; p.vel[0] = vx; p.vel[2] = vz;
 
-    const jNow = !!keys['Space'];
-    if (jNow && !prevJump && p.grounded && p.dashT === 0) { p.vel[1] = 7; p.grounded = false; sfx(330, 0.1, 'triangle', 0.07); }
-    prevJump = jNow;
+    const doJump = queuedJump; queuedJump = false;
+    if (doJump && p.grounded && p.dashT === 0) { p.vel[1] = 7; p.grounded = false; sfx(330, 0.1, 'triangle', 0.07); }
     if (p.dashT === 0) {
       const gh = floorY(p.pos[0], p.pos[2], p.pos[1]);
       if (!p.grounded || gh === null || p.pos[1] > gh + 0.02) {
@@ -350,11 +355,15 @@
     let nearL = null;
     for (const l of sim.lanterns) if (!l.lit && Math.hypot(p.pos[0] - l.pos[0], p.pos[2] - l.pos[2]) <= T.interact_radius) { nearL = l; break; }
     const promptEl = document.getElementById('prompt');
-    if (nearL && p.carried > 0) { promptEl.textContent = `E — Nạp ánh sáng (${nearL.deposited}/10)`; promptEl.style.display = 'block'; }
-    else promptEl.style.display = 'none';
+    if (nearL) {
+      promptEl.textContent = p.carried > 0 ? `E — Nạp ánh sáng (${nearL.deposited}/10)` : `Đứng gần đèn (${nearL.deposited}/10) — Hãy nhặt thêm đom đóm`;
+      promptEl.style.display = 'block';
+    } else {
+      promptEl.style.display = 'none';
+    }
 
-    const intNow = !!(keys['KeyE'] || keys['Enter']);
-    if (intNow && !prevInt && nearL && p.carried > 0) {
+    const doInt = queuedInt; queuedInt = false;
+    if (doInt && nearL && p.carried > 0) {
       const amt = Math.min(p.carried, T.lantern_cost - nearL.deposited);
       p.carried -= amt; nearL.deposited += amt; sim.score += amt * 10; sfx(520, 0.18, 'sine', 0.09);
       if (nearL.deposited >= T.lantern_cost) {
@@ -367,10 +376,9 @@
         }
       }
     }
-    prevInt = intNow;
 
-    const pulseNow = !!(keys['KeyQ'] || keys['KeyF']);
-    if (pulseNow && !prevPulse && p.pulseCd === 0 && p.carried >= T.pulse_cost) {
+    const doPulse = queuedPulse; queuedPulse = false;
+    if (doPulse && p.pulseCd === 0 && p.carried >= T.pulse_cost) {
       p.carried -= T.pulse_cost; p.pulseCd = 180; sfx(440, 0.3, 'sine', 0.12);
       for (const s of sim.shades) {
         if (Math.hypot(p.pos[0] - s.pos[0], p.pos[2] - s.pos[2]) <= T.pulse_radius) {
@@ -380,7 +388,6 @@
         }
       }
     }
-    prevPulse = pulseNow;
 
     if (sim.ticks % 240 === 0 && sim.motes.length < 30) addMote(sim.motePts[Math.floor(Math.random() * sim.motePts.length)]);
     if (sim.ticks >= 300 && (sim.ticks === 300 || (sim.ticks - 300) % sim.shadeInt === 0) && sim.shades.length < sim.maxShades) {
